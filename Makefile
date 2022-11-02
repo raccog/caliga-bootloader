@@ -2,7 +2,7 @@ ESP_IMG := target/ESP.img
 DISK_IMG := target/DISK.img
 
 BUILD_DIR := target/x86_64-unknown-uefi/debug
-BOOTLOADER := $(BUILD_DIR)/bootloader.efi
+BOOTLOADER := $(BUILD_DIR)/caligae-bootloader.efi
 
 # TODO: Let user choose OVMF dir (download if it doesn't exist?)
 OVMF_DIR := /usr/share/edk2-ovmf
