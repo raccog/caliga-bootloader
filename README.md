@@ -1,4 +1,4 @@
-# The Caligae Bootloader
+# The Caliga Bootloader
 
 I am designing a bootloader (just UEFI for now) to use in my hobby OS projects.
 

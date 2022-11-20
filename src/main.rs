@@ -2,7 +2,7 @@
 #![no_main]
 #![feature(abi_efiapi)]
 
-use caligae_bootloader::print_gdt::print_gdt;
+use caliga_bootloader::print_gdt::print_gdt;
 
 use core::{arch::asm, ops::DerefMut, panic::PanicInfo};
 use log::{error, info, warn};

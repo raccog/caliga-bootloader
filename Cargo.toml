@@ -1,5 +1,5 @@
 [package]
-name = "caligae-bootloader"
+name = "caliga-bootloader"
 version = "0.1.0"
 edition = "2021"
 
