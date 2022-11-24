@@ -1,10 +1,9 @@
 # Todo List
 
-* New Makefile
+* Build process
     * Copy OVMF without hardcoded paths?
-    * Write host-specific scripts for disk partitioning/formatting (MacOS is not compatible with the current Makefile)
-    * Ensure all necessary tools are installed on host
-    * Option for QEMU KVM if enabled on host
-* Research autoconf usage with Makefiles to see if it would help with cross-platform host setup
+    * Write script to ensure that build dependencies are installed (mtools, parted, cargo, dd, etc.)
+    * Write script to install build dependencies for each host system
+    * Option for QEMU KVM if target and host architectures are the same and kvm is enabled on host
 * Test out different GDT setups
 * Start more research into IDT
