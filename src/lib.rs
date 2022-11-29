@@ -26,8 +26,8 @@ pub trait BootLoaderInterface {
     }
 }
 
-pub fn caliga_main<Interface: BootLoaderInterface>(_boot: Interface) -> ! {
-
+pub fn caliga_main<Interface: BootLoaderInterface>(boot: Interface) -> ! {
+    let _config = boot.read_config();
 
     panic!("End of bootloader.");
 }
