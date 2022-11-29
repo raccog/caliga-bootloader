@@ -1,4 +1,4 @@
-BOOTLOADER := $(TARGET_BUILD_DIR)/caliga-bootloader.efi
+BOOTLOADER := $(TARGET_BUILD_DIR)/caliga.efi
 ESP_IMG := $(TARGET_BUILD_DIR)/esp.img
 DISK_IMG := $(TARGET_BUILD_DIR)/disk.img
 
@@ -12,10 +12,7 @@ $(ESP_IMG): $(BOOTLOADER)
 	mcopy -D o -i $@ $< '::/EFI/BOOT/BOOTX64.EFI'
 
 $(DISK_IMG): $(ESP_IMG)
-	dd if=/dev/zero of=$@ bs=1M count=66
-	parted -s $@ mklabel gpt
-	parted -s $@ mkpart ESP fat32 2048s 100%
-	parted -s $@ set 1 esp on
+	./meta/create-gpt.sh $@
 	dd if=$< of=$@ bs=1M seek=1 count=64 conv=notrunc
 
 $(OVMF_DST):
