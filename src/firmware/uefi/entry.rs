@@ -2,10 +2,20 @@
 #![no_main]
 #![feature(abi_efiapi)]
 
-use core::{ops::DerefMut, panic::PanicInfo};
+use caliga_bootloader::BootLoaderInterface;
+
+use core::{ops::DerefMut, panic::PanicInfo, ptr};
 use log::{error, info, warn};
 use uefi::{self, prelude::*};
 use uefi_services::println;
+
+struct UefiInterface {}
+
+impl BootLoaderInterface for UefiInterface {
+    fn read_config(&self) -> (*const u8, usize) {
+        (ptr::null(), 0)
+    }
+}
 
 #[panic_handler]
 fn handle_panic(info: &PanicInfo) -> ! {
@@ -74,7 +84,6 @@ fn boot_uefi_entry(image_handle: Handle, mut st: SystemTable<Boot>) -> Status {
         .open_volume()
         .expect("Could not get root directory of boot image's file system!");
 
-    // TODO: Determine next step
-
-    panic!("End of bootloader.");
+    let interface = UefiInterface {};
+    caliga_bootloader::caliga_main(interface);
 }
