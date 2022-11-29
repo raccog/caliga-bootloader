@@ -5,6 +5,13 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "caliga"
+test = false
+bench = false
+path = "src/firmware/uefi/entry.rs"
+
+
 [dependencies]
 lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
 log = "0.4.17"

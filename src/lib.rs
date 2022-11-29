@@ -4,7 +4,4 @@
 extern crate alloc;
 extern crate lazy_static;
 
-pub mod file_system;
-pub mod print_gdt;
-
-pub use file_system::{open_file, OpenFileError};
+pub mod firmware;

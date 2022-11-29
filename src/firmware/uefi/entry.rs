@@ -2,9 +2,7 @@
 #![no_main]
 #![feature(abi_efiapi)]
 
-use caliga_bootloader::print_gdt::print_gdt;
-
-use core::{arch::asm, ops::DerefMut, panic::PanicInfo};
+use core::{ops::DerefMut, panic::PanicInfo};
 use log::{error, info, warn};
 use uefi::{self, prelude::*};
 use uefi_services::println;
@@ -16,7 +14,7 @@ fn handle_panic(info: &PanicInfo) -> ! {
 }
 
 #[entry]
-fn main(image_handle: Handle, mut st: SystemTable<Boot>) -> Status {
+fn boot_uefi_entry(image_handle: Handle, mut st: SystemTable<Boot>) -> Status {
     // Initialize UEFI
     uefi_services::init(&mut st).unwrap();
     let bt = st.boot_services();
@@ -60,11 +58,6 @@ fn main(image_handle: Handle, mut st: SystemTable<Boot>) -> Status {
         uefi_revision.major(),
         uefi_revision.minor()
     );
-
-    // Load GDT
-    let mut gdtr: [u8; 10] = [0; 10];
-    unsafe { asm!("sgdt [{}]", in(reg) &mut gdtr, options(nostack, preserves_flags)) };
-    print_gdt(gdtr);
 
     // Get the file system that the bootloader image was loaded from
     // NOTE: This type of `expect`-based error logging is quick to write, but
