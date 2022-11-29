@@ -3,11 +3,9 @@ include meta/mk/$(TARGET_TRIPLE).mk
 
 all: $(BOOTLOADER)
 
-$(BOOTLOADER): bootloader
-
-.PHONY: bootloader
-bootloader:
+$(BOOTLOADER): FORCE
 	cargo build $(CARGO_BUILD_ARGS)
+FORCE:
 
 .PHONY: clean
 clean:
