@@ -2,11 +2,11 @@
 #![no_main]
 #![feature(abi_efiapi)]
 
-use caliga_bootloader::{ BootLoaderInterface, FileKind, firmware::uefi::file_system };
+use caliga_bootloader::{firmware::uefi::file_system, BootLoaderInterface, FileKind};
 
 use core::{ops::DerefMut, panic::PanicInfo, ptr};
 use log::{error, info, warn};
-use uefi::{self, CString16, prelude::*, proto::media::file::Directory};
+use uefi::{self, prelude::*, proto::media::file::Directory, CString16};
 use uefi_services::println;
 
 struct UefiInterface<'a> {
@@ -20,7 +20,7 @@ impl<'a> BootLoaderInterface for UefiInterface<'a> {
         let path = match file {
             FileKind::Config => CString16::try_from("/caliga.txt").unwrap(),
             FileKind::InitRamFs => CString16::try_from("/initramfs.img").unwrap(),
-            FileKind::Kernel => CString16::try_from("/kernel.elf").unwrap()
+            FileKind::Kernel => CString16::try_from("/kernel.elf").unwrap(),
         };
         let file_kind = match file {
             FileKind::Config => "config",
@@ -31,7 +31,7 @@ impl<'a> BootLoaderInterface for UefiInterface<'a> {
         match file_system::open_file(&mut esp_root_dir, &path) {
             Ok(_file) => {
                 info!("Found {} file!", file_kind);
-            },
+            }
             Err(_) => {
                 panic!("Could not open {} file at {}", file_kind, path);
             }

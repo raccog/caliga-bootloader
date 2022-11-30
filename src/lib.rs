@@ -11,15 +11,15 @@ pub mod firmware;
 pub enum FileKind {
     Config,
     InitRamFs,
-    Kernel
+    Kernel,
 }
 
 pub trait BootLoaderInterface {
-    fn get_memory_map(&self) -> ( *const u8, usize ) {
+    fn get_memory_map(&self) -> (*const u8, usize) {
         (ptr::null(), 0)
     }
 
-    fn read_file(&self, _file: FileKind) -> ( *const u8, usize ) {
+    fn read_file(&self, _file: FileKind) -> (*const u8, usize) {
         (ptr::null(), 0)
     }
 }
