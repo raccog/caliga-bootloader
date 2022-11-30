@@ -2,7 +2,7 @@
 #![no_main]
 #![feature(abi_efiapi)]
 
-use caliga_bootloader::{ BootLoaderInterface, firmware::uefi::file_system };
+use caliga_bootloader::{ BootLoaderInterface, FileKind, firmware::uefi::file_system };
 
 use core::{ops::DerefMut, panic::PanicInfo, ptr};
 use log::{error, info, warn};
@@ -15,15 +15,25 @@ struct UefiInterface<'a> {
 }
 
 impl<'a> BootLoaderInterface for UefiInterface<'a> {
-    fn read_config(&self) -> (*const u8, usize) {
+    fn read_file(&self, file: FileKind) -> (*const u8, usize) {
         let mut esp_root_dir = self.get_root_dir();
-        let filename = CString16::try_from("/caliga.txt").unwrap();
-        match file_system::open_file(&mut esp_root_dir, &filename) {
-            Ok(_config_file) => {
-                info!("Found config file!")
+        let path = match file {
+            FileKind::Config => CString16::try_from("/caliga.txt").unwrap(),
+            FileKind::InitRamFs => CString16::try_from("/initramfs.img").unwrap(),
+            FileKind::Kernel => CString16::try_from("/kernel.elf").unwrap()
+        };
+        let file_kind = match file {
+            FileKind::Config => "config",
+            FileKind::InitRamFs => "initramfs",
+            FileKind::Kernel => "kernel",
+        };
+
+        match file_system::open_file(&mut esp_root_dir, &path) {
+            Ok(_file) => {
+                info!("Found {} file!", file_kind);
             },
             Err(_) => {
-                panic!("Could not open config file");
+                panic!("Could not open {} file at {}", file_kind, path);
             }
         }
 
