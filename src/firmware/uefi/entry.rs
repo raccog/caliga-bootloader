@@ -17,7 +17,23 @@ use uefi::{
 };
 use uefi_services::println;
 
-const PAGE_SIZE: usize = 4096;
+// 80 bytes for file info plus 512 bytes for file name
+const FILE_INFO_SIZE: usize = 592;
+
+// NOTE: This struct and impl are only used to align this array to 8 bytes
+// TODO: Find an easier way to align an array of bytes
+#[repr(align(8))]
+struct FileInfoBuffer {
+    pub info: [u8; FILE_INFO_SIZE]
+}
+
+impl FileInfoBuffer {
+    pub fn new() -> Self {
+        Self {
+            info: [0; FILE_INFO_SIZE]
+        }
+    }
+}
 
 struct UefiInterface<'a> {
     image_handle: &'a Handle,
@@ -70,12 +86,14 @@ impl<'a> UefiInterface<'a> {
 
     fn read_file_inner(&self, mut file: RegularFile, path: CString16) -> (*const u8, usize) {
         // TODO: Dynamically get size of FileInfo struct?
-        let mut file_info: [u8; PAGE_SIZE] = [0; PAGE_SIZE];
-        if let Err(_) = file.get_info::<FileInfo>(&mut file_info) {
+        let mut file_info: FileInfoBuffer = FileInfoBuffer::new();
+        assert_eq!(mem::align_of_val(&file_info), mem::align_of::<u64>());
+
+        if let Err(_) = file.get_info::<FileInfo>(&mut file_info.info) {
             panic!("Could not get size of {}", path);
         }
 
-        let file_size = u64::from_ne_bytes(file_info[8..16].try_into().unwrap());
+        let file_size = u64::from_ne_bytes(file_info.info[8..16].try_into().unwrap());
         // TODO: Ensure file size is not too large on 32-bit systems
         let mut heap_buf: Vec<u8> = vec![0; file_size as usize];
         match file.read(&mut heap_buf) {
