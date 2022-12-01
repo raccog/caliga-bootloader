@@ -2,12 +2,22 @@
 #![no_main]
 #![feature(abi_efiapi)]
 
+extern crate alloc;
+
 use caliga_bootloader::{firmware::uefi::file_system, BootLoaderInterface, FileKind};
 
-use core::{ops::DerefMut, panic::PanicInfo, ptr};
+use alloc::{vec, vec::Vec};
+use core::{mem, ops::DerefMut, panic::PanicInfo};
 use log::{error, info, warn};
-use uefi::{self, prelude::*, proto::media::file::Directory, CString16};
+use uefi::{
+    self,
+    prelude::*,
+    proto::media::file::{Directory, File, FileInfo, RegularFile},
+    CString16,
+};
 use uefi_services::println;
+
+const PAGE_SIZE: usize = 4096;
 
 struct UefiInterface<'a> {
     image_handle: &'a Handle,
@@ -29,15 +39,14 @@ impl<'a> BootLoaderInterface for UefiInterface<'a> {
         };
 
         match file_system::open_file(&mut esp_root_dir, &path) {
-            Ok(_file) => {
+            Ok(file) => {
                 info!("Found {} file!", file_kind);
+                return self.read_file_inner(file, path);
             }
             Err(_) => {
                 panic!("Could not open {} file at {}", file_kind, path);
             }
         }
-
-        (ptr::null(), 0)
     }
 }
 
@@ -57,6 +66,27 @@ impl<'a> UefiInterface<'a> {
         // Open root directory
         fs.open_volume()
             .expect("Could not get root directory of boot image's file system!")
+    }
+
+    fn read_file_inner(&self, mut file: RegularFile, path: CString16) -> (*const u8, usize) {
+        // TODO: Dynamically get size of FileInfo struct?
+        let mut file_info: [u8; PAGE_SIZE] = [0; PAGE_SIZE];
+        if let Err(_) = file.get_info::<FileInfo>(&mut file_info) {
+            panic!("Could not get size of {}", path);
+        }
+
+        let file_size = u64::from_ne_bytes(file_info[8..16].try_into().unwrap());
+        // TODO: Ensure file size is not too large on 32-bit systems
+        let mut heap_buf: Vec<u8> = vec![0; file_size as usize];
+        match file.read(&mut heap_buf) {
+            Ok(bytes_read) => {
+                info!("Read {}: {} bytes", path, bytes_read);
+                return (&heap_buf[0], bytes_read);
+            }
+            Err(_) => {
+                panic!("Could not read {}", path);
+            }
+        }
     }
 }
 

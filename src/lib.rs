@@ -5,6 +5,7 @@ extern crate alloc;
 extern crate lazy_static;
 
 use core::ptr;
+use log::info;
 
 pub mod firmware;
 
@@ -25,7 +26,9 @@ pub trait BootLoaderInterface {
 }
 
 pub fn caliga_main<Interface: BootLoaderInterface>(boot: Interface) -> ! {
-    let _config = boot.read_file(FileKind::Config);
+    let (config_base, config_size) = boot.read_file(FileKind::Config);
+
+    info!("Config: {:p}, {}", config_base, config_size);
 
     panic!("End of bootloader.");
 }
