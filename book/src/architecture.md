@@ -12,7 +12,6 @@ Here is a list of targets I hope to have this boot loader running on:
 
 * x86-64 (UEFI)
 * aarch64 (RPi3/4, UEFI)
-* aarch32 (rp2040?)
 
 ## How Does the Boot Loader Work?
 
