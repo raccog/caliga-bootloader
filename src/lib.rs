@@ -17,11 +17,11 @@ pub enum FileKind {
 
 pub trait BootLoaderInterface {
     fn get_memory_map(&self) -> (*const u8, usize) {
-        (ptr::null(), 0)
+        panic!("get_memory_map() not implemented");
     }
 
     fn read_file(&self, _file: FileKind) -> (*const u8, usize) {
-        (ptr::null(), 0)
+        panic!("read_file() not implemented");
     }
 }
 
