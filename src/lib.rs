@@ -34,7 +34,7 @@ pub trait BootLoaderInterface {
 pub fn caliga_main<Interface: BootLoaderInterface>(mut boot: Interface) -> ! {
     let filesystem = boot.get_boot_filesystem();
     let mut descriptor = {
-        let fs_result = filesystem.open_file("/boot////caliga.txt");
+        let fs_result = filesystem.open_file("/efi/boot////bootx64.efi");
         if let Ok(fs) = fs_result {
             fs
         } else {
