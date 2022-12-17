@@ -4,7 +4,11 @@
 
 extern crate alloc;
 
-use caliga_bootloader::{firmware::uefi::file_system, BootLoaderInterface, FileKind};
+use caliga_bootloader::{
+    filesystem::FileSystem,
+    firmware::uefi::file_system::{self, UefiSimpleFilesystem},
+    BootLoaderInterface, FileKind,
+};
 
 use alloc::{vec, vec::Vec};
 use core::{mem, ops::DerefMut, panic::PanicInfo};
@@ -24,13 +28,13 @@ const FILE_INFO_SIZE: usize = 592;
 // TODO: Find an easier way to align an array of bytes
 #[repr(align(8))]
 struct FileInfoBuffer {
-    pub info: [u8; FILE_INFO_SIZE]
+    pub info: [u8; FILE_INFO_SIZE],
 }
 
 impl FileInfoBuffer {
     pub fn new() -> Self {
         Self {
-            info: [0; FILE_INFO_SIZE]
+            info: [0; FILE_INFO_SIZE],
         }
     }
 }
@@ -38,6 +42,7 @@ impl FileInfoBuffer {
 struct UefiInterface<'a> {
     image_handle: &'a Handle,
     system_table: &'a mut SystemTable<Boot>,
+    boot_filesystem: UefiSimpleFilesystem,
 }
 
 impl<'a> BootLoaderInterface for UefiInterface<'a> {
@@ -67,6 +72,10 @@ impl<'a> BootLoaderInterface for UefiInterface<'a> {
 }
 
 impl<'a> UefiInterface<'a> {
+    fn get_boot_filesystem(&mut self) -> &mut dyn FileSystem {
+        &mut self.boot_filesystem
+    }
+
     fn get_root_dir(&self) -> Directory {
         let bt = self.system_table.boot_services();
         // Get the file system that the bootloader image was loaded from
@@ -95,6 +104,7 @@ impl<'a> UefiInterface<'a> {
 
         let file_size = u64::from_ne_bytes(file_info.info[8..16].try_into().unwrap());
         // TODO: Ensure file size is not too large on 32-bit systems
+        // TODO: Check if file size is zero
         let mut heap_buf: Vec<u8> = vec![0; file_size as usize];
         match file.read(&mut heap_buf) {
             Ok(bytes_read) => {
@@ -163,6 +173,7 @@ fn boot_uefi_entry(image_handle: Handle, mut system_table: SystemTable<Boot>) ->
     let interface = UefiInterface {
         image_handle: &image_handle,
         system_table: &mut system_table,
+        boot_filesystem: UefiSimpleFilesystem {},
     };
     caliga_bootloader::caliga_main(interface);
 }

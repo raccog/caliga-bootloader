@@ -1,3 +1,25 @@
+use crate::filesystem::{FileDescriptor, FileSystem};
+
+pub struct UefiSimpleFilesystem {}
+
+impl FileSystem for UefiSimpleFilesystem {
+    fn open_file(&mut self, filename: &str) -> FileDescriptor {
+        panic!("NOT IMPLEMENTED");
+    }
+
+    fn close_file(&mut self, descriptor: FileDescriptor) {
+        panic!("NOT IMPLEMENTED");
+    }
+
+    fn read_file(&mut self, descriptor: &mut FileDescriptor, buf: &mut [u8], count: usize) {
+        panic!("NOT IMPLEMENTED");
+    }
+
+    fn seek_file(&mut self, descriptor: &mut FileDescriptor, location: u64) {
+        panic!("NOT IMPLEMENTED");
+    }
+}
+
 use alloc::{fmt, vec::Vec};
 use log::debug;
 use uefi::{
@@ -14,8 +36,6 @@ pub enum OpenFileError<'a> {
     ///
     /// Contains an error returned from a UEFI protocol and the path it occurred at.
     UefiFailure(uefi::Error, &'a [Char16]),
-    /// The path is not absolute; it does not start with `/`.
-    NotAbsolutePath,
     /// The path contains an empty file name.
     EmptyFileName,
     /// The path contains a file (or directory) name that is longer than 255 characters.
@@ -39,9 +59,6 @@ impl fmt::Display for OpenFileError<'_> {
                 let path_str = allocate_str(path);
                 // TODO: Properly format UEFI error
                 write!(f, "UEFI error at {}: {:?}", path_str, error)
-            }
-            NotAbsolutePath => {
-                write!(f, "Attempted to open a non-absolute path")
             }
             EmptyFileName => {
                 write!(f, "Attempted to open a path with an empty file name")
@@ -79,16 +96,16 @@ pub fn open_file<'a>(
     const FILE_NAME_MAX_LEN: usize = 255;
     debug!("Path: {}", path);
 
-    // Ensure path is absolute
     let path = path.as_slice_with_nul();
-    if path[0] != Char16::try_from('/').unwrap() {
-        return Err(OpenFileError::NotAbsolutePath);
-    }
+
+    // Ensure path is not an empty string
+    // TODO: Change this to a returned error if I ever open file names from user input
+    assert!(path.len() > 1);
 
     // State variables for parsing
     let mut current_dir_owned: Directory; // Subdirectory handles (not root dir) need to be owned
     let mut current_dir = root_dir;
-    let mut start_idx: usize = 1;
+    let mut start_idx: usize = 0;
     let mut next_separator: Option<usize> = find_next_separator(path, start_idx);
     // TODO: Move Char16 null character to a constant
     let mut dirname_buf: [Char16; FILE_NAME_MAX_LEN + 1] =
