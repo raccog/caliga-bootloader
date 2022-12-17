@@ -46,6 +46,10 @@ struct UefiInterface<'a> {
 }
 
 impl<'a> BootLoaderInterface for UefiInterface<'a> {
+    fn get_boot_filesystem(&mut self) -> &mut dyn FileSystem {
+        &mut self.boot_filesystem
+    }
+
     fn read_file(&self, file: FileKind) -> (*const u8, usize) {
         let mut esp_root_dir = self.get_root_dir();
         let path = match file {
@@ -72,10 +76,6 @@ impl<'a> BootLoaderInterface for UefiInterface<'a> {
 }
 
 impl<'a> UefiInterface<'a> {
-    fn get_boot_filesystem(&mut self) -> &mut dyn FileSystem {
-        &mut self.boot_filesystem
-    }
-
     fn get_root_dir(&self) -> Directory {
         let bt = self.system_table.boot_services();
         // Get the file system that the bootloader image was loaded from
