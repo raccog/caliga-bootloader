@@ -1,9 +1,37 @@
-use crate::filesystem::{FileDescriptor, FileSystem};
+use crate::filesystem::{self, FileDescriptor, FileSystem};
+
+use alloc::vec;
+use log::debug;
 
 pub struct UefiSimpleFilesystem {}
 
+fn split_path(path: &CStr16) -> Vec<&[Char16]> {
+    let path_slice = path
+        .as_slice_with_nul();
+    let separator = Char16::try_from('/').unwrap();
+    let null_terminator = Char16::try_from('\0').unwrap();
+    let mut path_vec: Vec<&[Char16]> = vec![];
+    let mut prev_separator: usize = 0;
+    for (idx, c) in path_slice.iter().enumerate() {
+        if *c == separator || *c == null_terminator {
+            if idx > prev_separator + 1 {
+                path_vec.push(&path_slice[prev_separator + 1..idx]);
+            }
+            prev_separator = idx;
+        }
+    }
+    path_vec
+}
+
 impl FileSystem for UefiSimpleFilesystem {
-    fn open_file(&mut self, filename: &str) -> FileDescriptor {
+    fn open_file(&mut self, path: &str) -> Result<FileDescriptor, filesystem::OpenFileError> {
+        // Convert to UCS2
+        let uefi_path = CString16::try_from(path)
+            .map_err(|_| filesystem::OpenFileError::InvalidCharset)?;
+
+        // Split path into array of file names
+        let path_vec = split_path(&uefi_path);
+        debug!("Path Vector: {:?}", path_vec);
         panic!("NOT IMPLEMENTED");
     }
 
@@ -21,7 +49,6 @@ impl FileSystem for UefiSimpleFilesystem {
 }
 
 use alloc::{fmt, vec::Vec};
-use log::debug;
 use uefi::{
     self,
     data_types::chars::Char16,

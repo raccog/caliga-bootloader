@@ -33,7 +33,15 @@ pub trait BootLoaderInterface {
 
 pub fn caliga_main<Interface: BootLoaderInterface>(mut boot: Interface) -> ! {
     let filesystem = boot.get_boot_filesystem();
-    let mut descriptor = filesystem.open_file("/caliga.txt");
+    let mut descriptor = {
+        let fs_result = filesystem
+        .open_file("/boot////caliga.txt");
+        if let Ok(fs) = fs_result {
+            fs
+        } else {
+            panic!("Could not open config file: {:?}", fs_result);
+        }
+    };
     let file_size = descriptor.size as usize;
     let mut buf = vec![0; file_size];
     filesystem.read_file(&mut descriptor, &mut buf, file_size);
