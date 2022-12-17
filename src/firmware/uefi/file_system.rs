@@ -6,8 +6,7 @@ use log::debug;
 pub struct UefiSimpleFilesystem {}
 
 fn split_path(path: &CStr16) -> Vec<&[Char16]> {
-    let path_slice = path
-        .as_slice_with_nul();
+    let path_slice = path.as_slice_with_nul();
     let separator = Char16::try_from('/').unwrap();
     let null_terminator = Char16::try_from('\0').unwrap();
     let mut path_vec: Vec<&[Char16]> = vec![];
@@ -26,8 +25,8 @@ fn split_path(path: &CStr16) -> Vec<&[Char16]> {
 impl FileSystem for UefiSimpleFilesystem {
     fn open_file(&mut self, path: &str) -> Result<FileDescriptor, filesystem::OpenFileError> {
         // Convert to UCS2
-        let uefi_path = CString16::try_from(path)
-            .map_err(|_| filesystem::OpenFileError::InvalidCharset)?;
+        let uefi_path =
+            CString16::try_from(path).map_err(|_| filesystem::OpenFileError::InvalidCharset)?;
 
         // Split path into array of file names
         let path_vec = split_path(&uefi_path);
