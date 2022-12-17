@@ -10,10 +10,7 @@ use caliga_bootloader::{
 
 use core::{ops::DerefMut, panic::PanicInfo};
 use log::{error, info, warn};
-use uefi::{
-    self,
-    prelude::*,
-};
+use uefi::{self, prelude::*};
 use uefi_services::println;
 
 struct UefiInterface<'a> {

@@ -19,7 +19,10 @@ pub trait FileSystem {
 /// An error returned from opening a file.
 #[derive(Debug)]
 pub enum OpenFileError {
-    InvalidPath,
+    /// The opened path is too long to be valid for this filesystem.
+    PathTooLong,
+    /// One of the path's components is too long to be valid for this filesystem.
+    ComponentTooLong,
     /// The opened path cannot be converted into the proper charset.
     InvalidCharset,
     /// The opened file was not found on the filesystem.
