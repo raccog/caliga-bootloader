@@ -66,10 +66,9 @@ fn boot_uefi_entry(image_handle: Handle, mut system_table: SystemTable<Boot>) ->
     let firmware_revision = system_table.firmware_revision();
     let uefi_revision = system_table.uefi_revision();
     info!(
-        "Firmware Vendor: {} Revision {}.{}",
+        "Firmware Vendor: {} Revision {:#x}",
         system_table.firmware_vendor(),
-        firmware_revision.major(),
-        firmware_revision.minor()
+        firmware_revision,
     );
     info!(
         "UEFI Revision {}.{}",
