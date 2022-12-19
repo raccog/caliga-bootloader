@@ -1,19 +1,24 @@
+use alloc::boxed::Box;
+
 #[derive(Debug)]
-pub struct FileDescriptor {
-    pub size: u64,
+pub struct FileDescriptor<FileSystemData> {
+    pub data: Box<FileSystemData>
 }
 
 pub trait FileSystem {
+    type FileSystemData;
     /// NOTES:
     ///
     /// * Relative paths start at the filesystem's root; they are identical to absolute paths
-    fn open_file(&mut self, path: &str) -> Result<FileDescriptor, OpenFileError>;
+    fn open_file(&mut self, path: &str) -> Result<FileDescriptor<Self::FileSystemData>, OpenFileError>;
 
-    fn close_file(&mut self, descriptor: FileDescriptor);
+    fn close_file(&mut self, descriptor: FileDescriptor<Self::FileSystemData>);
 
-    fn read_file(&mut self, descriptor: &mut FileDescriptor, buf: &mut [u8], count: usize);
+    fn read_file(&mut self, descriptor: &mut FileDescriptor<Self::FileSystemData>, buf: &mut [u8], count: usize);
 
-    fn seek_file(&mut self, descriptor: &mut FileDescriptor, location: u64);
+    fn seek_file(&mut self, descriptor: &mut FileDescriptor<Self::FileSystemData>, location: u64);
+
+    fn get_size(&mut self, descriptor: &mut FileDescriptor<Self::FileSystemData>) -> u64;
 }
 
 /// An error returned from opening a file.

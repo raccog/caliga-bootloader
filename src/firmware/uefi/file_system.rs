@@ -1,11 +1,11 @@
 use crate::filesystem::{FileDescriptor, FileSystem, OpenFileError};
 
-use alloc::{vec, vec::Vec};
-use log::debug;
+use alloc::{vec, vec::Vec, boxed::Box};
 use uefi::{
+    prelude::*,
     data_types::chars::NUL_16,
-    proto::media::file::{Directory, File, FileAttribute, FileMode, FileType},
-    CStr16, CString16, Char16, Status,
+    proto::media::file::{Directory, File, FileAttribute, FileMode, FileType, RegularFile, FileInfo},
+    CStr16, CString16, Char16,
 };
 
 // Both of these lengths do not include the null terminator
@@ -20,26 +20,10 @@ pub struct UefiSimpleFilesystem {
     pub root_dir: Directory,
 }
 
-/// Split a path into its individual components.
-///
-/// Each component is split up by the '/' character. Empty components are omitted.
-fn split_path(path_slice: &[Char16]) -> Vec<&[Char16]> {
-    let separator = Char16::try_from('/').unwrap();
-    let mut path_components: Vec<&[Char16]> = vec![];
-    let mut prev_separator: usize = 0;
-    for (idx, c) in path_slice.iter().enumerate() {
-        if *c == separator || *c == NUL_16 {
-            if idx > prev_separator + 1 {
-                path_components.push(&path_slice[prev_separator + 1..idx]);
-            }
-            prev_separator = idx;
-        }
-    }
-    path_components
-}
-
 impl FileSystem for UefiSimpleFilesystem {
-    fn open_file(&mut self, path: &str) -> Result<FileDescriptor, OpenFileError> {
+    type FileSystemData = RegularFile;
+
+    fn open_file(&mut self, path: &str) -> Result<FileDescriptor<Self::FileSystemData>, OpenFileError> {
         // Convert to UCS2
         let uefi_path = CString16::try_from(path).map_err(|_| OpenFileError::InvalidCharset)?;
         let path_slice = uefi_path.as_slice_with_nul();
@@ -51,7 +35,6 @@ impl FileSystem for UefiSimpleFilesystem {
 
         // Split path into components
         let path_components = split_path(&path_slice);
-        debug!("Path Vector: {:?}", path_components);
 
         let mut dirname_buf: [Char16; COMPONENT_MAX_LEN + 1] = [NUL_16; COMPONENT_MAX_LEN + 1];
         let mut current_dir_owned: Directory;
@@ -106,34 +89,60 @@ impl FileSystem for UefiSimpleFilesystem {
             // Determine whether opened file is a directory or a regular file.
             // Return any unexpected errors
             if let FileType::Dir(next_dir) = handle {
-                log::debug!("Dir: {}", filename);
                 if should_be_file {
                     return Err(OpenFileError::IsDirectory);
                 }
                 current_dir_owned = next_dir;
                 current_dir = &mut current_dir_owned;
-            } else if let FileType::Regular(_file) = handle {
-                log::debug!("File: {}", filename);
+            } else if let FileType::Regular(file) = handle {
                 if !should_be_file {
                     return Err(OpenFileError::IsFile);
                 }
                 // TODO: Include UEFI file protocol in FileDescriptor struct
-                return Ok(FileDescriptor { size: 0 });
+                return Ok(FileDescriptor { data: Box::new(file) });
             }
         }
 
         Err(OpenFileError::FileNotFound)
     }
 
-    fn close_file(&mut self, _descriptor: FileDescriptor) {
+    fn close_file(&mut self, _descriptor: FileDescriptor<Self::FileSystemData>) {
         panic!("NOT IMPLEMENTED");
     }
 
-    fn read_file(&mut self, _descriptor: &mut FileDescriptor, _buf: &mut [u8], _count: usize) {
+    fn read_file(&mut self, _descriptor: &mut FileDescriptor<Self::FileSystemData>, _buf: &mut [u8], _count: usize) {
         panic!("NOT IMPLEMENTED");
     }
 
-    fn seek_file(&mut self, _descriptor: &mut FileDescriptor, _location: u64) {
+    fn seek_file(&mut self, _descriptor: &mut FileDescriptor<Self::FileSystemData>, _location: u64) {
         panic!("NOT IMPLEMENTED");
     }
+
+    fn get_size(&mut self, descriptor: &mut FileDescriptor<Self::FileSystemData>) -> u64 {
+        let file_info_result = descriptor.data.get_boxed_info::<FileInfo>();
+        match file_info_result {
+            Ok(file_info) => {
+                file_info.file_size()
+            },
+            Err(_) => 0
+        }
+    }
+}
+
+/// Split a path into its individual components.
+///
+/// Each component is split up by the '/' character. Empty components are omitted.
+fn split_path(path_slice: &[Char16]) -> Vec<&[Char16]> {
+    let separator = Char16::try_from('/').unwrap();
+    let mut path_components: Vec<&[Char16]> = vec![];
+    let mut prev_separator: usize = 0;
+    for (idx, c) in path_slice.iter().enumerate() {
+        if *c == separator || *c == NUL_16 {
+            if idx > prev_separator + 1 {
+                path_components.push(&path_slice[prev_separator + 1..idx]);
+            }
+            prev_separator = idx;
+        }
+    }
+    path_components
 }

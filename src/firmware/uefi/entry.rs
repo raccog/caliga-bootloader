@@ -10,7 +10,7 @@ use caliga_bootloader::{
 
 use core::{ops::DerefMut, panic::PanicInfo};
 use log::{error, info, warn};
-use uefi::{self, prelude::*};
+use uefi::{self, prelude::*, proto::media::file::RegularFile};
 use uefi_services::println;
 
 struct UefiInterface<'a> {
@@ -20,7 +20,9 @@ struct UefiInterface<'a> {
 }
 
 impl<'a> BootLoaderInterface for UefiInterface<'a> {
-    fn get_boot_filesystem(&mut self) -> &mut dyn FileSystem {
+    type FileSystemData = RegularFile;
+
+    fn get_boot_filesystem(&mut self) -> &mut dyn FileSystem<FileSystemData = Self::FileSystemData> {
         &mut self.boot_filesystem
     }
 }
