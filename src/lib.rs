@@ -109,28 +109,28 @@ mod tmp {
         }
     }
 
-    trait FileSystemDriver<'bootmem> {
-        fn open(&'bootmem self, path: &str) -> &'bootmem mut FileDescriptor {
+    trait FileSystemDriver {
+        fn open(&self, path: &str) -> FileDescriptor {
             panic!("NOT IMPLEMENTED");
         }
-        fn close(&'bootmem self, fd: &'bootmem FileDescriptor) {
+        fn close(&self, fd: FileDescriptor) {
             panic!("NOT IMPLEMENTED");
         }
-        fn read(&'bootmem self, fd: &'bootmem mut FileDescriptor, buf: &mut [u8]) {
+        fn read(&self, fd: &mut FileDescriptor, buf: &mut [u8]) {
             panic!("NOT IMPLEMENTED");
         }
-        fn seek(&'bootmem self, fd: &'bootmem mut FileDescriptor, location: u64) {
+        fn seek(&self, fd: &mut FileDescriptor, location: u64) {
             panic!("NOT IMPLEMENTED");
         }
     }
 
     struct FileSystemInterface<'bootmem> {
         device: &'bootmem dyn BlockDevice<'bootmem>,
-        driver: Box<dyn FileSystemDriver<'bootmem>>
+        driver: Box<dyn FileSystemDriver>
     }
 
     impl<'bootmem> FileSystemInterface<'bootmem> {
-        fn new(device: &'bootmem dyn BlockDevice<'bootmem>, driver: Box<dyn FileSystemDriver<'bootmem>>) -> Self {
+        fn new(device: &'bootmem dyn BlockDevice<'bootmem>, driver: Box<dyn FileSystemDriver>) -> Self {
             Self {
                 device, driver
             }
@@ -141,17 +141,17 @@ mod tmp {
         }
     }
 
-    impl<'bootmem> FileSystemDriver<'bootmem> for FileSystemInterface<'bootmem> {
-        fn open(&'bootmem self, path: &str) -> &'bootmem mut FileDescriptor {
+    impl<'bootmem> FileSystemDriver for FileSystemInterface<'bootmem> {
+        fn open(&self, path: &str) -> FileDescriptor {
             self.driver.open(path)
         }
-        fn close(&'bootmem self, fd: &'bootmem FileDescriptor) {
+        fn close(&self, fd: FileDescriptor) {
             self.driver.close(fd)
         }
-        fn read(&'bootmem self, fd: &'bootmem mut FileDescriptor, buf: &mut [u8]) {
+        fn read(&self, fd: &mut FileDescriptor, buf: &mut [u8]) {
             self.driver.read(fd, buf)
         }
-        fn seek(&'bootmem self, fd: &'bootmem mut FileDescriptor, location: u64) {
+        fn seek(&self, fd: &mut FileDescriptor, location: u64) {
             self.driver.seek(fd, location)
         }
     }
@@ -160,7 +160,7 @@ mod tmp {
 
     struct FileDescriptor<'bootmem> {
         filesystem: &'bootmem FileSystemInterface<'bootmem>,
-        driver: &'bootmem dyn FileSystemDriver<'bootmem>,
+        driver: &'bootmem dyn FileSystemDriver,
         metadata: Box<dyn FileMetadata>
     }
     impl<'bootmem> BlockDevice<'bootmem> for FileDescriptor<'bootmem> {
@@ -177,7 +177,7 @@ mod tmp {
         //let filesystem2 = boot.get_boot_filesystem();
         let mut fd = filesystem.open("/path/test");
         let mut buf = [0; 256];
-        filesystem.read(fd, &mut buf);
+        filesystem.read(&mut fd, &mut buf);
         //filesystem2.read(&mut fd, &mut buf);
         filesystem.close(fd);
 
