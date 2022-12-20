@@ -1,6 +1,6 @@
 # How Does the Boot Loader Work?
 
-NOTE: Currently, (as of Dec 9, 2022) the ideas discussed in this section are not implemented yet. 
+NOTE: Currently, (as of Dec 20, 2022) the ideas discussed in this section are not implemented yet.
 
 These notes are from my perspective, having a little experience with working on boot loaders. I don't have more than a year of experience on this topic, so take all the information here with a large grain of salt. Or maybe a boulder of salt :)
 
@@ -8,6 +8,8 @@ These notes are from my perspective, having a little experience with working on 
 
 In a high-level, the boot loader's job is to start running an operating system when the computer is turned on. This high-level job is composed of many low-level tasks, for example:
 
+* Read from storage devices
+* Interact with different types of file systems
 * Set up a memory map
 * Set up a stack
 * Load kernel into memory
