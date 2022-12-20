@@ -14,30 +14,30 @@ use filesystem::FileSystem;
 mod tmp {
     use alloc::boxed::Box;
 
-    pub trait CrossPlatformInterface<'filesystem> {
+    pub trait CrossPlatformInterface<'bootmem> {
         fn all_partitions(&self) -> &[Partition] {
             panic!("NOT IMPLEMENTED");
         }
         fn get_storage_devices(&self) -> &[StorageDevice] {
             panic!("NOT IMPLEMENTED");
         }
-        fn get_boot_filesystem(&self) -> &'filesystem FileSystemInterface {
+        fn get_boot_filesystem(&'bootmem self) -> &'bootmem FileSystemInterface<'bootmem> {
             panic!("NOT IMPLEMENTED");
         }
     }
 
-    struct UefiInterface<'device, 'filesystem> {
-        bootfs: FileSystemInterface<'device, 'filesystem>
+    struct UefiInterface<'bootmem> {
+        bootfs: FileSystemInterface<'bootmem>
     }
-    impl<'device, 'filesystem> CrossPlatformInterface<'filesystem> for UefiInterface<'device, 'filesystem> {
-        fn get_boot_filesystem(&self) -> &'filesystem FileSystemInterface {
+    impl<'bootmem> CrossPlatformInterface<'bootmem> for UefiInterface<'bootmem> {
+        fn get_boot_filesystem(&'bootmem self) -> &'bootmem FileSystemInterface<'bootmem> {
             &self.bootfs
         }
     }
 
     const SECTOR_SIZE: usize = 512;
 
-    trait BlockDevice {
+    trait BlockDevice<'bootmem> {
         fn read(&self, sector: u64) -> [u8; SECTOR_SIZE] {
             panic!("NOT IMPLEMENTED");
         }
@@ -46,14 +46,14 @@ mod tmp {
             panic!("NOT IMPLEMENTED");
         }
 
-        fn get_device_type(&self) -> BlockDeviceType;
-        fn get_parent_device(&self) -> Option<BlockDeviceType>;
+        fn get_device_type(&'bootmem self) -> BlockDeviceType;
+        fn get_parent_device(&'bootmem self) -> Option<BlockDeviceType>;
     }
 
-    enum BlockDeviceType<'device, 'parttable, 'filesystem> {
-        Storage(&'device StorageDevice),
-        Part(&'device Partition<'device, 'parttable>),
-        File(&'filesystem FileDescriptor<'device, 'filesystem>),
+    enum BlockDeviceType<'bootmem> {
+        Storage(&'bootmem StorageDevice),
+        Part(&'bootmem Partition<'bootmem>),
+        File(&'bootmem FileDescriptor<'bootmem>),
     }
 
     trait StorageDeviceDriver {}
@@ -62,25 +62,25 @@ mod tmp {
         driver: Box<dyn StorageDeviceDriver>
     }
 
-    impl BlockDevice for StorageDevice {
-        fn get_device_type(&self) -> BlockDeviceType {
+    impl<'bootmem> BlockDevice<'bootmem> for StorageDevice {
+        fn get_device_type(&'bootmem self) -> BlockDeviceType {
             BlockDeviceType::Storage(&self)
         }
 
-        fn get_parent_device(&self) -> Option<BlockDeviceType> {
+        fn get_parent_device(&'bootmem self) -> Option<BlockDeviceType> {
             None
         }
     }
 
     trait PartitionTableDriver {}
 
-    struct PartitionTable<'device> {
-        device: &'device dyn BlockDevice,
+    struct PartitionTable<'bootmem> {
+        device: &'bootmem dyn BlockDevice<'bootmem>,
         driver: Box<dyn PartitionTableDriver>
     }
 
-    impl<'device> PartitionTable<'device> {
-        fn new(device: &'device dyn BlockDevice, driver: Box<dyn PartitionTableDriver>) -> Self {
+    impl<'bootmem> PartitionTable<'bootmem> {
+        fn new(device: &'bootmem dyn BlockDevice<'bootmem>, driver: Box<dyn PartitionTableDriver>) -> Self {
             Self {
                 device, driver
             }
@@ -90,95 +90,95 @@ mod tmp {
             panic!("NOT IMPLEMENTED");
         }
 
-        fn get_block_device(&self) -> BlockDeviceType {
+        fn get_block_device(&'bootmem self) -> BlockDeviceType {
             self.device.get_device_type()
         }
     }
 
-    struct Partition<'device, 'parttable> {
-        table: &'parttable PartitionTable<'device>
+    struct Partition<'bootmem> {
+        table: &'bootmem PartitionTable<'bootmem>
     }
 
-    impl<'device, 'parttable> BlockDevice for Partition<'device, 'parttable> {
-        fn get_device_type(&self) -> BlockDeviceType {
+    impl<'bootmem> BlockDevice<'bootmem> for Partition<'bootmem> {
+        fn get_device_type(&'bootmem self) -> BlockDeviceType {
             BlockDeviceType::Part(&self)
         }
 
-        fn get_parent_device(&self) -> Option<BlockDeviceType> {
+        fn get_parent_device(&'bootmem self) -> Option<BlockDeviceType> {
             Some(self.table.get_block_device())
         }
     }
 
-    trait FileSystemDriver<'filesystem> {
-        fn open(&'filesystem self, path: &str) -> &'filesystem mut FileDescriptor {
+    trait FileSystemDriver<'bootmem> {
+        fn open(&'bootmem self, path: &str) -> &'bootmem mut FileDescriptor {
             panic!("NOT IMPLEMENTED");
         }
-        fn close(&'filesystem self, fd: &'filesystem FileDescriptor) {
+        fn close(&'bootmem self, fd: &'bootmem FileDescriptor) {
             panic!("NOT IMPLEMENTED");
         }
-        fn read(&'filesystem self, fd: &'filesystem mut FileDescriptor, buf: &mut [u8]) {
+        fn read(&'bootmem self, fd: &'bootmem mut FileDescriptor, buf: &mut [u8]) {
             panic!("NOT IMPLEMENTED");
         }
-        fn seek(&'filesystem self, fd: &'filesystem mut FileDescriptor, location: u64) {
+        fn seek(&'bootmem self, fd: &'bootmem mut FileDescriptor, location: u64) {
             panic!("NOT IMPLEMENTED");
         }
     }
 
-    struct FileSystemInterface<'device, 'filesystem> {
-        device: &'device dyn BlockDevice,
-        driver: Box<dyn FileSystemDriver<'filesystem>>
+    struct FileSystemInterface<'bootmem> {
+        device: &'bootmem dyn BlockDevice<'bootmem>,
+        driver: Box<dyn FileSystemDriver<'bootmem>>
     }
 
-    impl<'device, 'filesystem> FileSystemInterface<'device, 'filesystem> {
-        fn new(device: &'device dyn BlockDevice, driver: Box<dyn FileSystemDriver<'filesystem>>) -> Self {
+    impl<'bootmem> FileSystemInterface<'bootmem> {
+        fn new(device: &'bootmem dyn BlockDevice<'bootmem>, driver: Box<dyn FileSystemDriver<'bootmem>>) -> Self {
             Self {
                 device, driver
             }
         }
 
-        fn get_device(&self) -> &'device dyn BlockDevice {
+        fn get_device(&self) -> &'bootmem dyn BlockDevice {
             self.device
         }
     }
 
-    impl<'device, 'filesystem> FileSystemDriver<'filesystem> for FileSystemInterface<'device, 'filesystem> {
-        fn open(&'filesystem self, path: &str) -> &'filesystem mut FileDescriptor {
+    impl<'bootmem> FileSystemDriver<'bootmem> for FileSystemInterface<'bootmem> {
+        fn open(&'bootmem self, path: &str) -> &'bootmem mut FileDescriptor {
             self.driver.open(path)
         }
-        fn close(&'filesystem self, fd: &'filesystem FileDescriptor) {
+        fn close(&'bootmem self, fd: &'bootmem FileDescriptor) {
             self.driver.close(fd)
         }
-        fn read(&'filesystem self, fd: &'filesystem mut FileDescriptor, buf: &mut [u8]) {
+        fn read(&'bootmem self, fd: &'bootmem mut FileDescriptor, buf: &mut [u8]) {
             self.driver.read(fd, buf)
         }
-        fn seek(&'filesystem self, fd: &'filesystem mut FileDescriptor, location: u64) {
+        fn seek(&'bootmem self, fd: &'bootmem mut FileDescriptor, location: u64) {
             self.driver.seek(fd, location)
         }
     }
 
     trait FileMetadata {}
 
-    struct FileDescriptor<'device, 'filesystem> {
-        filesystem: &'filesystem FileSystemInterface<'device, 'filesystem>,
-        driver: &'filesystem dyn FileSystemDriver<'filesystem>,
+    struct FileDescriptor<'bootmem> {
+        filesystem: &'bootmem FileSystemInterface<'bootmem>,
+        driver: &'bootmem dyn FileSystemDriver<'bootmem>,
         metadata: Box<dyn FileMetadata>
     }
-    impl<'device, 'filesystem> BlockDevice for FileDescriptor<'device, 'filesystem> {
-        fn get_device_type(&self) -> BlockDeviceType {
+    impl<'bootmem> BlockDevice<'bootmem> for FileDescriptor<'bootmem> {
+        fn get_device_type(&'bootmem self) -> BlockDeviceType {
             BlockDeviceType::File(&self)
         }
-        fn get_parent_device(&self) -> Option<BlockDeviceType> {
+        fn get_parent_device(&'bootmem self) -> Option<BlockDeviceType> {
             Some(self.filesystem.get_device().get_device_type())
         }
     }
 
-    fn caliga_main<'filesystem, Interface: CrossPlatformInterface<'filesystem>>(mut boot: Interface) -> ! {
+    fn caliga_main<'bootmem>(boot: &'bootmem mut dyn CrossPlatformInterface<'bootmem>) -> ! {
         let filesystem = boot.get_boot_filesystem();
-        let filesystem2 = boot.get_boot_filesystem();
+        //let filesystem2 = boot.get_boot_filesystem();
         let mut fd = filesystem.open("/path/test");
         let mut buf = [0; 256];
-        filesystem.read(&mut fd, &mut buf);
-        filesystem2.read(&mut fd, &mut buf);
+        filesystem.read(fd, &mut buf);
+        //filesystem2.read(&mut fd, &mut buf);
         filesystem.close(fd);
 
         loop {}
