@@ -28,6 +28,14 @@ It makes heavy use of lifetime parameters so that each data structure can contai
 
 Note that the structs that contain a boxed driver will likely have the `Box` replaced with a mutable pointer in the future. This is because I probably don't want the structs to own the drivers; the drivers should be stored elsewhere and only pointed to by each struct.
 
+### WARNING
+
+After doing some testing with these data structures, I have realized that this example implementation would not work.
+
+I tried to use different lifetimes for each data structure (Storage Devices, Partition Tables, and File Systems) in an attempt to differentiate between Block Device types at compile time, but it turns out lifetimes are not useful for this. Looks like I need to read more about the Rust borrow checker. :P
+
+I'm leaving this failed example implementation here for now so that I can compare it with my future implementation attempts.
+
 ```rust,ignore
 trait CrossPlatformInterface {
     fn get_all_partitions(&self) -> &[Partition];
