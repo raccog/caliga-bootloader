@@ -11,6 +11,60 @@ pub mod firmware;
 
 use filesystem::FileSystem;
 
+mod tmp {
+    use alloc::{boxed::Box, vec::Vec};
+
+    struct CrossPlatformInterface {
+        storage_devices: Vec<StorageDevice>,
+        partition_tables: Vec<PartitionTable>,
+        partitions: Vec<Partition>,
+        file_systems: Vec<FileSystem>,
+    }
+
+    trait BlockDeviceInterface {
+        fn read(&self, sector: u64) -> [u8; 512] {
+            panic!("NOT IMPLEMENTED");
+        }
+
+        fn sector_count(&self) -> u64 {
+            panic!("NOT IMPLEMENTED");
+        }
+    }
+
+    struct StorageDevice {
+        index: u32,
+        driver: Box<dyn BlockDeviceInterface>,
+    }
+
+    impl BlockDeviceInterface for StorageDevice {
+        fn read(&self, sector: u64) -> [u8; 512] {
+            self.driver.read(sector)
+        }
+
+        fn sector_count(&self) -> u64 {
+            self.driver.sector_count()
+        }
+    }
+
+    struct UefiStorageDeviceDriver {
+        system_table: usize,
+    }
+
+    impl BlockDeviceInterface for UefiStorageDeviceDriver {}
+
+    struct PartitionTable {
+        index: u32,
+    }
+
+    struct Partition {
+        index: u32,
+    }
+
+    struct FileSystem {
+        index: u32,
+    }
+}
+
 pub enum FileKind {
     Config,
     InitRamFs,
