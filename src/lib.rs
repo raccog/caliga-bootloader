@@ -90,7 +90,7 @@ pub trait FileSystemInterface {
         panic!("NOT IMPLEMENTED");
     }
 
-    unsafe fn get_size(&self, _fd: *mut FileDescriptor) -> u64 {
+    unsafe fn get_size(&self, _fd: *mut FileDescriptor) -> Result<u64, ()> {
         panic!("NOT IMPLEMENTED");
     }
 }
@@ -121,13 +121,14 @@ impl FileSystemInterface for FileSystem {
         self.driver.seek(fd, location)
     }
 
-    unsafe fn get_size(&self, fd: *mut FileDescriptor) -> u64 {
+    unsafe fn get_size(&self, fd: *mut FileDescriptor) -> Result<u64, ()> {
         self.driver.get_size(fd)
     }
 }
 
 pub unsafe fn caliga_main(boot: CrossPlatformHeader) -> ! {
     let filesystem = boot.get_boot_filesystem();
+
     info!("Opening config file");
     let descriptor = {
         let fs_result = (*filesystem).open_file("/config.txt");
@@ -136,8 +137,12 @@ pub unsafe fn caliga_main(boot: CrossPlatformHeader) -> ! {
         }
         fs_result.unwrap()
     };
-    let file_size = (*filesystem).get_size(descriptor) as usize;
+
+    let file_size = (*filesystem).get_size(descriptor).unwrap_or_else(|_|{
+        panic!("Could not get size for file");
+    }) as usize;
     info!("File size: {}", file_size);
+
     match (*filesystem).seek(descriptor, 1) {
         Ok(_) => {
             info!("Set file position to the second byte");
@@ -151,13 +156,16 @@ pub unsafe fn caliga_main(boot: CrossPlatformHeader) -> ! {
     let read_size = read_result.unwrap_or_else(|bytes_read| {
         panic!("Could not read config file in full; only read {} bytes", bytes_read);
     });
+
     (*filesystem).close(descriptor);
+
     info!(
         "Requested_size: {}, Read_size: {}",
         file_size,
         read_size,
     );
     buf.truncate(read_size);
+
     if let Ok(config_contents) = String::from_utf8(buf) {
         info!("File contents: {}", config_contents);
     } else {

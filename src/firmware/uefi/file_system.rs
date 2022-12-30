@@ -196,7 +196,7 @@ impl FileSystemInterface for UefiSimpleFileSystemDriver {
         }
     }
 
-    unsafe fn get_size(&self, descriptor: *mut FileDescriptor) -> u64 {
+    unsafe fn get_size(&self, descriptor: *mut FileDescriptor) -> Result<u64, ()> {
         assert!(!descriptor.is_null());
         let index = (*descriptor).index;
         assert!(index < MAX_OPENED_FILES);
@@ -204,8 +204,8 @@ impl FileSystemInterface for UefiSimpleFileSystemDriver {
             as *mut RegularFile;
         let file_info_result = (*uefi_descriptor).get_boxed_info::<FileInfo>();
         match file_info_result {
-            Ok(file_info) => file_info.file_size(),
-            Err(_) => 0,
+            Ok(file_info) => Ok(file_info.file_size()),
+            Err(_) => Err(()),
         }
     }
 }
