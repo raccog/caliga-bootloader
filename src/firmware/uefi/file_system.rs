@@ -146,7 +146,7 @@ impl FileSystemInterface for UefiSimpleFileSystemDriver {
         Err(OpenFileError::FileNotFound)
     }
 
-    unsafe fn close(&mut self, fd: *mut FileDescriptor) {
+    unsafe fn close(&mut self, fd: *mut FileDescriptor) -> Result<(), ()> {
         assert!(!fd.is_null());
         let index = (*fd).index;
         assert!(index < MAX_OPENED_FILES);
@@ -154,10 +154,11 @@ impl FileSystemInterface for UefiSimpleFileSystemDriver {
             if other_fd.path == (*fd).path {
                 self.opened_files[index] = None;
                 self.uefi_descriptors[index] = None;
-                return;
+                return Ok(());
             }
         }
         info!("Could not close file at: {}", (*fd).path);
+        Err(())
     }
 
     unsafe fn read_file(
