@@ -82,12 +82,11 @@ pub trait FileSystemInterface {
         &self,
         _fd: *mut FileDescriptor,
         _buf: &mut [u8],
-        _size: usize,
     ) -> Result<usize, usize> {
         panic!("NOT IMPLEMENTED");
     }
 
-    unsafe fn seek(&self, _fd: *mut FileDescriptor, _location: u64) -> Result<usize, usize> {
+    unsafe fn seek(&self, _fd: *mut FileDescriptor, _location: u64) -> Result<(), ()> {
         panic!("NOT IMPLEMENTED");
     }
 
@@ -114,12 +113,11 @@ impl FileSystemInterface for FileSystem {
         &self,
         fd: *mut FileDescriptor,
         buf: &mut [u8],
-        size: usize,
     ) -> Result<usize, usize> {
-        self.driver.read_file(fd, buf, size)
+        self.driver.read_file(fd, buf)
     }
 
-    unsafe fn seek(&self, fd: *mut FileDescriptor, location: u64) -> Result<usize, usize> {
+    unsafe fn seek(&self, fd: *mut FileDescriptor, location: u64) -> Result<(), ()> {
         self.driver.seek(fd, location)
     }
 
@@ -140,17 +138,25 @@ pub unsafe fn caliga_main(boot: CrossPlatformHeader) -> ! {
     };
     let file_size = (*filesystem).get_size(descriptor) as usize;
     info!("File size: {}", file_size);
-    let mut buf = vec![0; file_size];
-    if let Ok(read_size) = (*filesystem).read_file(descriptor, &mut buf, file_size) {
-        info!(
-            "Requested_size: {}, Read_size: {}, Buf_size: {}",
-            file_size,
-            read_size,
-            buf.len()
-        );
-    } else {
-        panic!("Could not read config file");
+    match (*filesystem).seek(descriptor, 1) {
+        Ok(_) => {
+            info!("Set file position to the second byte");
+        },
+        Err(_) => {
+            panic!("Could not set file position");
+        }
     }
+    let mut buf = vec![0; file_size];
+    let read_result = (*filesystem).read_file(descriptor, &mut buf);
+    let read_size = read_result.unwrap_or_else(|bytes_read| {
+        panic!("Could not read config file in full; only read {} bytes", bytes_read);
+    });
+    info!(
+        "Requested_size: {}, Read_size: {}",
+        file_size,
+        read_size,
+    );
+    buf.truncate(read_size);
     if let Ok(config_contents) = String::from_utf8(buf) {
         info!("File contents: {}", config_contents);
     } else {

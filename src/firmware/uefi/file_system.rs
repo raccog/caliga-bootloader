@@ -149,7 +149,6 @@ impl FileSystemInterface for UefiSimpleFileSystemDriver {
         &self,
         fd: *mut FileDescriptor,
         buf: &mut [u8],
-        _size: usize,
     ) -> Result<usize, usize> {
         assert!(!fd.is_null());
         let index = (*fd).index;
@@ -166,6 +165,19 @@ impl FileSystemInterface for UefiSimpleFileSystemDriver {
                     Err(0)
                 }
             }
+        }
+    }
+
+    unsafe fn seek(&self, fd: *mut FileDescriptor, location: u64) -> Result<(), ()> {
+        assert!(!fd.is_null());
+        let index = (*fd).index;
+        assert!(index < MAX_OPENED_FILES);
+        let uefi_descriptor = self.uefi_descriptors[index].as_ref().unwrap() as *const RegularFile
+            as *mut RegularFile;
+        let set_position_result = (*uefi_descriptor).set_position(location);
+        match set_position_result {
+            Ok(_) => Ok(()),
+            Err(_) => Err(())
         }
     }
 
