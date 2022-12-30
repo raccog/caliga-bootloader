@@ -146,7 +146,7 @@ impl FileSystemInterface for UefiSimpleFileSystemDriver {
         Err(OpenFileError::FileNotFound)
     }
 
-    unsafe fn close(&mut self, fd: *mut FileDescriptor) -> Result<(), ()> {
+    unsafe fn close_file(&mut self, fd: *mut FileDescriptor) -> Result<(), ()> {
         assert!(!fd.is_null());
         let index = (*fd).index;
         assert!(index < MAX_OPENED_FILES);
@@ -180,7 +180,7 @@ impl FileSystemInterface for UefiSimpleFileSystemDriver {
         }
     }
 
-    unsafe fn seek(&self, fd: *mut FileDescriptor, location: u64) -> Result<(), ()> {
+    unsafe fn seek_file(&self, fd: *mut FileDescriptor, location: u64) -> Result<(), ()> {
         assert!(!fd.is_null());
         let index = (*fd).index;
         assert!(index < MAX_OPENED_FILES);

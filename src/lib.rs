@@ -77,7 +77,7 @@ pub unsafe fn caliga_main(boot: CrossPlatformHeader) -> ! {
     }) as usize;
     info!("File size: {}", file_size);
 
-    match (*filesystem).seek(descriptor, 1) {
+    match (*filesystem).seek_file(descriptor, 1) {
         Ok(_) => {
             info!("Set file position to the second byte");
         }
@@ -94,7 +94,7 @@ pub unsafe fn caliga_main(boot: CrossPlatformHeader) -> ! {
         );
     });
 
-    if let Err(_) = (*filesystem).close(descriptor) {
+    if let Err(_) = (*filesystem).close_file(descriptor) {
         panic!("Could not close file");
     }
 
