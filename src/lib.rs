@@ -74,7 +74,7 @@ pub trait FileSystemInterface {
         panic!("NOT IMPLEMENTED");
     }
 
-    unsafe fn close(&self, _fd: *mut FileDescriptor) {
+    unsafe fn close(&mut self, _fd: *mut FileDescriptor) {
         panic!("NOT IMPLEMENTED");
     }
 
@@ -105,7 +105,7 @@ impl FileSystemInterface for FileSystem {
         self.driver.open_file(path)
     }
 
-    unsafe fn close(&self, fd: *mut FileDescriptor) {
+    unsafe fn close(&mut self, fd: *mut FileDescriptor) {
         self.driver.close(fd)
     }
 
@@ -151,6 +151,7 @@ pub unsafe fn caliga_main(boot: CrossPlatformHeader) -> ! {
     let read_size = read_result.unwrap_or_else(|bytes_read| {
         panic!("Could not read config file in full; only read {} bytes", bytes_read);
     });
+    (*filesystem).close(descriptor);
     info!(
         "Requested_size: {}, Read_size: {}",
         file_size,

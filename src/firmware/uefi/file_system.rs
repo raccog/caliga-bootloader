@@ -3,6 +3,7 @@ use crate::{
 };
 
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
+use log::info;
 use uefi::{
     data_types::chars::NUL_16,
     prelude::*,
@@ -143,6 +144,20 @@ impl FileSystemInterface for UefiSimpleFileSystemDriver {
         }
 
         Err(OpenFileError::FileNotFound)
+    }
+
+    unsafe fn close(&mut self, fd: *mut FileDescriptor) {
+        assert!(!fd.is_null());
+        let index = (*fd).index;
+        assert!(index < MAX_OPENED_FILES);
+        if let Some(other_fd) = &self.opened_files[index] {
+            if other_fd.path == (*fd).path {
+                self.opened_files[index] = None;
+                self.uefi_descriptors[index] = None;
+                return;
+            }
+        }
+        info!("Could not close file at: {}", (*fd).path);
     }
 
     unsafe fn read_file(
