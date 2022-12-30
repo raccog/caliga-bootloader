@@ -1,10 +1,14 @@
-use crate::filesystem::{FileDescriptor, FileSystem, OpenFileError};
+use crate::{
+    filesystem::OpenFileError, FileDescriptor, FileDescriptorInterface, FileSystemInterface,
+};
 
-use alloc::{vec, vec::Vec, boxed::Box};
+use alloc::{boxed::Box, string::String, vec, vec::Vec};
 use uefi::{
-    prelude::*,
     data_types::chars::NUL_16,
-    proto::media::file::{Directory, File, FileAttribute, FileMode, FileType, RegularFile, FileInfo},
+    prelude::*,
+    proto::media::file::{
+        Directory, File, FileAttribute, FileInfo, FileMode, FileType, RegularFile,
+    },
     CStr16, CString16, Char16,
 };
 
@@ -12,18 +16,30 @@ use uefi::{
 const MAX_PATH_LEN: usize = 32760;
 const COMPONENT_MAX_LEN: usize = 255;
 
-/// A [`FileSystem`] implementation for the UEFI protocol EFI_SIMPLE_FILE_SYSTEM_PROTOCOL.
-///
-/// This implementation reads the FAT filesystem that was booted from. All paths are converted to the
-/// UCS2 charset.
-pub struct UefiSimpleFilesystem {
-    pub root_dir: Directory,
+pub struct UefiFileDescriptorDriver {}
+
+impl FileDescriptorInterface for UefiFileDescriptorDriver {}
+
+// Start with a very low maximum
+pub const MAX_OPENED_FILES: usize = 5;
+
+pub struct UefiSimpleFileSystemDriver {
+    pub root_directory: Directory,
+    pub opened_files: [Option<FileDescriptor>; MAX_OPENED_FILES],
+    pub uefi_descriptors: [Option<RegularFile>; MAX_OPENED_FILES],
 }
 
-impl FileSystem for UefiSimpleFilesystem {
-    type FileSystemData = RegularFile;
+impl FileSystemInterface for UefiSimpleFileSystemDriver {
+    unsafe fn open_file(&mut self, path: &str) -> Result<*mut FileDescriptor, OpenFileError> {
+        // Return error if file is already opened
+        for slot in self.opened_files.iter() {
+            if let Some(descriptor) = slot {
+                if descriptor.path == path {
+                    return Err(OpenFileError::AlreadyOpen);
+                }
+            }
+        }
 
-    fn open_file(&mut self, path: &str) -> Result<FileDescriptor<Self::FileSystemData>, OpenFileError> {
         // Convert to UCS2
         let uefi_path = CString16::try_from(path).map_err(|_| OpenFileError::InvalidCharset)?;
         let path_slice = uefi_path.as_slice_with_nul();
@@ -38,7 +54,7 @@ impl FileSystem for UefiSimpleFilesystem {
 
         let mut dirname_buf: [Char16; COMPONENT_MAX_LEN + 1] = [NUL_16; COMPONENT_MAX_LEN + 1];
         let mut current_dir_owned: Directory;
-        let mut current_dir = &mut self.root_dir;
+        let mut current_dir = &mut self.root_directory;
         for (idx, &entry) in path_components.iter().enumerate() {
             // Ensure component name is not too long
             if entry.len() > COMPONENT_MAX_LEN {
@@ -98,33 +114,71 @@ impl FileSystem for UefiSimpleFilesystem {
                 if !should_be_file {
                     return Err(OpenFileError::IsFile);
                 }
-                // TODO: Include UEFI file protocol in FileDescriptor struct
-                return Ok(FileDescriptor { data: Box::new(file) });
+
+                let mut descriptor_index: Option<usize> = None;
+                for (index, slot) in self.opened_files.iter_mut().enumerate() {
+                    if slot.is_none() {
+                        descriptor_index = Some(index);
+                        break;
+                    }
+                }
+                let index = if descriptor_index.is_none() {
+                    return Err(OpenFileError::TooManyOpenFiles);
+                } else {
+                    descriptor_index.unwrap()
+                };
+                self.opened_files[index] = Some(FileDescriptor {
+                    index,
+                    offset: 0,
+                    path: String::from(path),
+                    driver: Box::new(UefiFileDescriptorDriver {}),
+                });
+                self.uefi_descriptors[index] = Some(file);
+                // TODO: Research safety of casting raw pointers to be mutable
+                return Ok(
+                    self.opened_files[index].as_ref().unwrap() as *const FileDescriptor
+                        as *mut FileDescriptor,
+                );
             }
         }
 
         Err(OpenFileError::FileNotFound)
     }
 
-    fn close_file(&mut self, _descriptor: FileDescriptor<Self::FileSystemData>) {
-        panic!("NOT IMPLEMENTED");
+    unsafe fn read_file(
+        &self,
+        fd: *mut FileDescriptor,
+        buf: &mut [u8],
+        _size: usize,
+    ) -> Result<usize, usize> {
+        assert!(!fd.is_null());
+        let index = (*fd).index;
+        assert!(index < MAX_OPENED_FILES);
+        let uefi_descriptor = self.uefi_descriptors[index].as_ref().unwrap() as *const RegularFile
+            as *mut RegularFile;
+        let read_result = (*uefi_descriptor).read(buf);
+        match read_result {
+            Ok(bytes_read) => Ok(bytes_read),
+            Err(maybe_bytes_read) => {
+                if let Some(bytes_read) = maybe_bytes_read.data() {
+                    Err(*bytes_read)
+                } else {
+                    Err(0)
+                }
+            }
+        }
     }
 
-    fn read_file(&mut self, _descriptor: &mut FileDescriptor<Self::FileSystemData>, _buf: &mut [u8], _count: usize) {
-        panic!("NOT IMPLEMENTED");
-    }
-
-    fn seek_file(&mut self, _descriptor: &mut FileDescriptor<Self::FileSystemData>, _location: u64) {
-        panic!("NOT IMPLEMENTED");
-    }
-
-    fn get_size(&mut self, descriptor: &mut FileDescriptor<Self::FileSystemData>) -> u64 {
-        let file_info_result = descriptor.data.get_boxed_info::<FileInfo>();
+    unsafe fn get_size(&self, descriptor: *mut FileDescriptor) -> u64 {
+        assert!(!descriptor.is_null());
+        let index = (*descriptor).index;
+        assert!(index < MAX_OPENED_FILES);
+        let uefi_descriptor = self.uefi_descriptors[index].as_ref().unwrap() as *const RegularFile
+            as *mut RegularFile;
+        let file_info_result = (*uefi_descriptor).get_boxed_info::<FileInfo>();
         match file_info_result {
-            Ok(file_info) => {
-                file_info.file_size()
-            },
-            Err(_) => 0
+            Ok(file_info) => file_info.file_size(),
+            Err(_) => 0,
         }
     }
 }

@@ -5,27 +5,14 @@
 extern crate alloc;
 
 use caliga_bootloader::{
-    filesystem::FileSystem, firmware::uefi::file_system::UefiSimpleFilesystem, BootLoaderInterface,
+    firmware::uefi::file_system::UefiSimpleFileSystemDriver, CrossPlatformHeader, FileSystem,
 };
 
+use alloc::{boxed::Box, vec, vec::Vec};
 use core::{ops::DerefMut, panic::PanicInfo};
 use log::{error, info, warn};
-use uefi::{self, prelude::*, proto::media::file::RegularFile};
+use uefi::{self, prelude::*};
 use uefi_services::println;
-
-struct UefiInterface<'a> {
-    _image_handle: &'a Handle,
-    _system_table: &'a mut SystemTable<Boot>,
-    boot_filesystem: UefiSimpleFilesystem,
-}
-
-impl<'a> BootLoaderInterface for UefiInterface<'a> {
-    type FileSystemData = RegularFile;
-
-    fn get_boot_filesystem(&mut self) -> &mut dyn FileSystem<FileSystemData = Self::FileSystemData> {
-        &mut self.boot_filesystem
-    }
-}
 
 #[panic_handler]
 fn handle_panic(info: &PanicInfo) -> ! {
@@ -78,7 +65,7 @@ fn boot_uefi_entry(image_handle: Handle, mut system_table: SystemTable<Boot>) ->
         uefi_revision.minor()
     );
 
-    let root_dir = {
+    let root_directory = {
         let bt = system_table.boot_services();
         // Get the file system that the bootloader image was loaded from
         // NOTE: This type of `expect`-based error logging is quick to write, but
@@ -95,10 +82,21 @@ fn boot_uefi_entry(image_handle: Handle, mut system_table: SystemTable<Boot>) ->
             .open_volume()
             .expect("Could not get root directory of boot image's file system!")
     };
-    let interface = UefiInterface {
-        _image_handle: &image_handle,
-        _system_table: &mut system_table,
-        boot_filesystem: UefiSimpleFilesystem { root_dir },
+    let boot_fs_driver = Box::new(UefiSimpleFileSystemDriver {
+        root_directory,
+        opened_files: [None, None, None, None, None],
+        uefi_descriptors: [None, None, None, None, None],
+    });
+    let filesystem = FileSystem {
+        index: 0,
+        driver: boot_fs_driver,
     };
-    caliga_bootloader::caliga_main(interface);
+    let header = CrossPlatformHeader {
+        storage_devices: Vec::new(),
+        partition_tables: Vec::new(),
+        partitions: Vec::new(),
+        file_systems: vec![filesystem],
+        boot_file_system_index: 0,
+    };
+    unsafe { caliga_bootloader::caliga_main(header) };
 }

@@ -10,6 +10,7 @@ $(ESP_IMG): $(BOOTLOADER)
 	mmd -D s -i $@ '::/EFI'
 	mmd -D s -i $@ '::/EFI/BOOT'
 	mcopy -D o -i $@ $< '::/EFI/BOOT/BOOTX64.EFI'
+	mcopy -D o -i $@ tmp_config.txt '::/config.txt'
 
 $(DISK_IMG): $(ESP_IMG)
 	./meta/create-gpt.sh $@
