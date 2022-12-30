@@ -5,8 +5,8 @@
 extern crate alloc;
 
 use caliga_bootloader::{
-    filesystem::FileSystem,
-    firmware::uefi::file_system::UefiSimpleFileSystemDriver, CrossPlatformHeader,
+    filesystem::FileSystem, firmware::uefi::file_system::UefiSimpleFileSystemDriver,
+    CrossPlatformHeader,
 };
 
 use alloc::{boxed::Box, vec, vec::Vec};

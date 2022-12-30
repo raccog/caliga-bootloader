@@ -72,16 +72,15 @@ pub unsafe fn caliga_main(boot: CrossPlatformHeader) -> ! {
         fs_result.unwrap()
     };
 
-    let file_size = (*filesystem).get_size(descriptor).unwrap_or_else(|_|{
-        panic!("Could not get size for file")
-;
+    let file_size = (*filesystem).get_size(descriptor).unwrap_or_else(|_| {
+        panic!("Could not get size for file");
     }) as usize;
     info!("File size: {}", file_size);
 
     match (*filesystem).seek(descriptor, 1) {
         Ok(_) => {
             info!("Set file position to the second byte");
-        },
+        }
         Err(_) => {
             panic!("Could not set file position");
         }
@@ -89,18 +88,17 @@ pub unsafe fn caliga_main(boot: CrossPlatformHeader) -> ! {
     let mut buf = vec![0; file_size];
     let read_result = (*filesystem).read_file(descriptor, &mut buf);
     let read_size = read_result.unwrap_or_else(|bytes_read| {
-        panic!("Could not read config file in full; only read {} bytes", bytes_read);
+        panic!(
+            "Could not read config file in full; only read {} bytes",
+            bytes_read
+        );
     });
 
     if let Err(_) = (*filesystem).close(descriptor) {
         panic!("Could not close file");
     }
 
-    info!(
-        "Requested_size: {}, Read_size: {}",
-        file_size,
-        read_size,
-    );
+    info!("Requested_size: {}, Read_size: {}", file_size, read_size,);
     buf.truncate(read_size);
 
     if let Ok(config_contents) = String::from_utf8(buf) {

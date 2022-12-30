@@ -1,5 +1,5 @@
-use crate::{
-    filesystem::{OpenFileError, FileDescriptor, FileDescriptorInterface, FileSystemInterface},
+use crate::filesystem::{
+    FileDescriptor, FileDescriptorInterface, FileSystemInterface, OpenFileError,
 };
 
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
@@ -161,11 +161,7 @@ impl FileSystemInterface for UefiSimpleFileSystemDriver {
         Err(())
     }
 
-    unsafe fn read_file(
-        &self,
-        fd: *mut FileDescriptor,
-        buf: &mut [u8],
-    ) -> Result<usize, usize> {
+    unsafe fn read_file(&self, fd: *mut FileDescriptor, buf: &mut [u8]) -> Result<usize, usize> {
         assert!(!fd.is_null());
         let index = (*fd).index;
         assert!(index < MAX_OPENED_FILES);
@@ -193,7 +189,7 @@ impl FileSystemInterface for UefiSimpleFileSystemDriver {
         let set_position_result = (*uefi_descriptor).set_position(location);
         match set_position_result {
             Ok(_) => Ok(()),
-            Err(_) => Err(())
+            Err(_) => Err(()),
         }
     }
 

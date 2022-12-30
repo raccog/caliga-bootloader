@@ -18,11 +18,7 @@ pub trait FileSystemInterface {
         panic!("NOT IMPLEMENTED");
     }
 
-    unsafe fn read_file(
-        &self,
-        _fd: *mut FileDescriptor,
-        _buf: &mut [u8],
-    ) -> Result<usize, usize> {
+    unsafe fn read_file(&self, _fd: *mut FileDescriptor, _buf: &mut [u8]) -> Result<usize, usize> {
         panic!("NOT IMPLEMENTED");
     }
 
@@ -49,11 +45,7 @@ impl FileSystemInterface for FileSystem {
         self.driver.close(fd)
     }
 
-    unsafe fn read_file(
-        &self,
-        fd: *mut FileDescriptor,
-        buf: &mut [u8],
-    ) -> Result<usize, usize> {
+    unsafe fn read_file(&self, fd: *mut FileDescriptor, buf: &mut [u8]) -> Result<usize, usize> {
         self.driver.read_file(fd, buf)
     }
 
