@@ -1,13 +1,17 @@
+// Partially taken from https://lowenware.com/blog/aarch64-bare-metal-program-in-rust/
 {
   "arch": "aarch64",
   "data-layout": "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128",
   "disable-redzone": true,
+  "env": "",
+  "executables": true,
   "features": "+strict-align,+neon,+fp-armv8",
   "is-builtin": false,
   "linker": "rust-lld",
   "linker-flavor": "ld.lld",
   "llvm-target": "aarch64-unknown-none",
   "max-atomic-width": 128,
+  "os": "none",
   "panic-strategy": "abort",
   "relocation-model": "static",
   "supported-sanitizers": [
@@ -15,7 +19,6 @@
   ],
   "pre-link-args": {
     "ld.lld": [
-      "--gc-sections",
       "-Tmeta/link/aarch64-unknown-none.ld"
     ]
   },
