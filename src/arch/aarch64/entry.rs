@@ -18,6 +18,7 @@ pub extern "C" fn qemu_entry() {
     let out_str = b"Hello aarch64";
     for byte in out_str {
         unsafe {
+            loop {}
             core::ptr::write_volatile(uart, *byte);
         }
     }
