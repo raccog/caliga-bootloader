@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![feature(core_intrinsics)]
 
 use core::arch::global_asm;
 
@@ -18,8 +19,10 @@ pub extern "C" fn qemu_entry() {
     let out_str = b"Hello aarch64";
     for byte in out_str {
         unsafe {
-            loop {}
-            core::ptr::write_volatile(uart, *byte);
+            core::intrinsics::volatile_store(uart, *byte);
+            // For some reason, `write_volatile` panics.
+            // Maybe it thinks that the UART pointer is null?
+            //core::ptr::write_volatile(uart, *byte);
         }
     }
 
