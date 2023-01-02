@@ -1,5 +1,6 @@
-include meta/mk/config.mk
-include meta/mk/$(TARGET_TRIPLE).mk
+include meta/mk/pre-config.mk
+include meta/mk/$(TARGET).mk
+include meta/mk/post-config.mk
 
 all: $(BOOTLOADER)
 

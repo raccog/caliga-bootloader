@@ -8,18 +8,17 @@ edition = "2021"
 uefi = ["dep:uefi", "dep:uefi-services"]
 
 [[bin]]
-name = "caliga"
+name = "caliga-x86_64-uefi"
 test = false
 bench = false
 path = "src/firmware/uefi/entry.rs"
 required-features = ["uefi"]
 
 [[bin]]
-name = "caliga-qemu-aarch64"
+name = "caliga-aarch64-qemu"
 test = false
 bench = false
 path = "src/arch/aarch64/entry.rs"
-
 
 [dependencies]
 lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
