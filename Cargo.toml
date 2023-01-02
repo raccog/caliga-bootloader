@@ -4,16 +4,24 @@ version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+uefi = ["dep:uefi", "dep:uefi-services"]
 
 [[bin]]
-name = "caliga"
+name = "caliga-x86_64-uefi"
 test = false
 bench = false
 path = "src/firmware/uefi/entry.rs"
+required-features = ["uefi"]
 
+[[bin]]
+name = "caliga-aarch64-qemu"
+test = false
+bench = false
+path = "src/arch/aarch64/entry.rs"
 
 [dependencies]
 lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
 log = "0.4.17"
-uefi = { version = "0.18.0", features = ["exts", "logger"] }
-uefi-services = { version = "0.15.0", default-features = false, features = ["logger"] }
+uefi = { version = "0.18.0", features = ["exts", "logger"], optional = true }
+uefi-services = { version = "0.15.0", default-features = false, features = ["logger"], optional = true }

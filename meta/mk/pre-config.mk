@@ -1,6 +1,6 @@
-TARGET_TRIPLE ?= x86_64-unknown-uefi
+TARGET ?= x86_64-unknown-uefi
 
-CARGO_BUILD_ARGS :=
+CARGO_BUILD_ARGS := --target=meta/target-specs/$(TARGET).json
 
 # 1 for debug build, 0 for release build
 DEBUG ?= 1
@@ -12,4 +12,4 @@ else
 endif
 
 
-TARGET_BUILD_DIR := target/$(TARGET_TRIPLE)/$(BUILD_TYPE)
+TARGET_BUILD_DIR := target/$(TARGET)/$(BUILD_TYPE)

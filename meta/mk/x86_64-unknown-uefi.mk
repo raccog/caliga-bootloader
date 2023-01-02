@@ -1,8 +1,12 @@
-BOOTLOADER := $(TARGET_BUILD_DIR)/caliga.efi
+BINARY = caliga-x86_64-uefi
+
+BOOTLOADER := $(TARGET_BUILD_DIR)/$(BINARY).efi
 ESP_IMG := $(TARGET_BUILD_DIR)/esp.img
 DISK_IMG := $(TARGET_BUILD_DIR)/disk.img
 
 OVMF_DST := $(TARGET_BUILD_DIR)/ovmf.fd
+
+CARGO_BUILD_ARGS += --features="uefi"
 
 $(ESP_IMG): $(BOOTLOADER)
 	dd if=/dev/zero of=$@ bs=1M count=64
@@ -20,10 +24,6 @@ $(OVMF_DST):
 	export OVMF
 	cp $(shell ./meta/find-ovmf.sh) $@
 
+.PHONY: qemu
 qemu: $(DISK_IMG) $(OVMF_DST)
-	qemu-system-x86_64 \
-	    -drive file=$(OVMF_DST),if=pflash,format=raw,readonly=on \
-	    -drive file=$(DISK_IMG),format=raw \
-	    -cpu qemu64 \
-	    -net none \
-	    -serial stdio
+	./meta/qemu-x86_64-uefi.sh "$(OVMF_DST)" "$(DISK_IMG)"
