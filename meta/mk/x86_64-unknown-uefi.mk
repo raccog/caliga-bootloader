@@ -4,6 +4,8 @@ DISK_IMG := $(TARGET_BUILD_DIR)/disk.img
 
 OVMF_DST := $(TARGET_BUILD_DIR)/ovmf.fd
 
+CARGO_BUILD_ARGS += --features="uefi"
+
 $(ESP_IMG): $(BOOTLOADER)
 	dd if=/dev/zero of=$@ bs=1M count=64
 	mkfs.vfat -F 32 $@

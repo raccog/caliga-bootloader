@@ -1,6 +1,7 @@
 TARGET_TRIPLE ?= x86_64-unknown-uefi
+BINARY ?= caliga
 
-CARGO_BUILD_ARGS :=
+CARGO_BUILD_ARGS := --target=$(TARGET_TRIPLE) --bin $(BINARY)
 
 # 1 for debug build, 0 for release build
 DEBUG ?= 1
