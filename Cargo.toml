@@ -11,14 +11,14 @@ uefi = ["dep:uefi", "dep:uefi-services"]
 name = "caliga-x86_64-uefi"
 test = false
 bench = false
-path = "src/firmware/uefi/entry.rs"
+path = "bin/x86_64/uefi.rs"
 required-features = ["uefi"]
 
 [[bin]]
 name = "caliga-aarch64-qemu"
 test = false
 bench = false
-path = "src/arch/aarch64/entry.rs"
+path = "bin/aarch64/qemu.rs"
 
 [dependencies]
 lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
