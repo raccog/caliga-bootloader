@@ -1,5 +1,9 @@
 # Introduction
 
-This book is a notebook for my ideas on how to design a boot loader for personal use.
+This bootloader is a hobby project of mine for eventually booting my (to-be-made) operating system on different hardware.
 
-As such, it is designed with the intention of continuously re-writing this information. Everything written here is just an informal collection of my thoughts.
+There isn't any real goal or plan, I'm mostly fumbling around for fun while learning a lot in the process. So I guess fun and learning could be called the main two goals.
+
+The design of this bootloader has and will change a lot. This book is mostly a collection of my thoughts while developing this bootloader.
+
+When I start working on my operating system, this book will probably be merged into a book for that operating system.
