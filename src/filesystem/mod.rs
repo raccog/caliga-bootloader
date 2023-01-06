@@ -11,50 +11,23 @@ pub struct FileDescriptor {
 
 pub trait FileSystemInterface {
     unsafe fn open_file(&mut self, _path: &str) -> Result<*mut FileDescriptor, OpenFileError> {
-        panic!("NOT IMPLEMENTED");
+        unimplemented!();
     }
 
     unsafe fn close_file(&mut self, _fd: *mut FileDescriptor) -> Result<(), ()> {
-        panic!("NOT IMPLEMENTED");
+        unimplemented!();
     }
 
     unsafe fn read_file(&self, _fd: *mut FileDescriptor, _buf: &mut [u8]) -> Result<usize, usize> {
-        panic!("NOT IMPLEMENTED");
+        unimplemented!();
     }
 
     unsafe fn seek_file(&self, _fd: *mut FileDescriptor, _location: u64) -> Result<(), ()> {
-        panic!("NOT IMPLEMENTED");
+        unimplemented!();
     }
 
     unsafe fn get_size(&self, _fd: *mut FileDescriptor) -> Result<u64, ()> {
-        panic!("NOT IMPLEMENTED");
-    }
-}
-
-pub struct FileSystem {
-    pub index: u32,
-    pub driver: Box<dyn FileSystemInterface>,
-}
-
-impl FileSystemInterface for FileSystem {
-    unsafe fn open_file(&mut self, path: &str) -> Result<*mut FileDescriptor, OpenFileError> {
-        self.driver.open_file(path)
-    }
-
-    unsafe fn close_file(&mut self, fd: *mut FileDescriptor) -> Result<(), ()> {
-        self.driver.close_file(fd)
-    }
-
-    unsafe fn read_file(&self, fd: *mut FileDescriptor, buf: &mut [u8]) -> Result<usize, usize> {
-        self.driver.read_file(fd, buf)
-    }
-
-    unsafe fn seek_file(&self, fd: *mut FileDescriptor, location: u64) -> Result<(), ()> {
-        self.driver.seek_file(fd, location)
-    }
-
-    unsafe fn get_size(&self, fd: *mut FileDescriptor) -> Result<u64, ()> {
-        self.driver.get_size(fd)
+        unimplemented!();
     }
 }
 

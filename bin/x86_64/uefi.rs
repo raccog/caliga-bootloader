@@ -5,8 +5,8 @@
 extern crate alloc;
 
 use caliga_bootloader::{
-    filesystem::FileSystem, firmware::uefi::file_system::UefiSimpleFileSystemDriver,
-    CrossPlatformHeader,
+    firmware::uefi::file_system::UefiSimpleFileSystemDriver,
+    BootInterface, BootConfig,
 };
 
 use alloc::{boxed::Box, vec, vec::Vec};
@@ -83,21 +83,15 @@ fn boot_uefi_entry(image_handle: Handle, mut system_table: SystemTable<Boot>) ->
             .open_volume()
             .expect("Could not get root directory of boot image's file system!")
     };
-    let boot_fs_driver = Box::new(UefiSimpleFileSystemDriver {
+    let boot_fs = Box::new(UefiSimpleFileSystemDriver {
         root_directory,
         opened_files: [None, None, None, None, None],
         uefi_descriptors: [None, None, None, None, None],
     });
-    let filesystem = FileSystem {
-        index: 0,
-        driver: boot_fs_driver,
+    let boot = BootInterface {
+        config_buffer: BootConfig {},
+        block_devices: vec![],
+        file_systems: vec![boot_fs],
     };
-    let header = CrossPlatformHeader {
-        storage_devices: Vec::new(),
-        partition_tables: Vec::new(),
-        partitions: Vec::new(),
-        file_systems: vec![filesystem],
-        boot_file_system_index: 0,
-    };
-    unsafe { caliga_bootloader::caliga_main(header) };
+    unsafe { caliga_bootloader::caliga_main(boot) };
 }
