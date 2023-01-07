@@ -1,11 +1,10 @@
 /* Partially taken from https://lowenware.com/blog/aarch64-bare-metal-program-in-rust/ */
 ENTRY(_start)
-MEMORY {
-       RAM : ORIGIN = 0x40100000, LENGTH = 0x10000000
-}
+EXTERN(PROGRAM_START PROGRAM_END PROGRAM_SIZE)
 SECTIONS {
          . = 0x40100000;
-         .text.boot : { *(.text.boot) } > RAM
+         PROGRAM_START = .;
+         .text.boot : { *(.text.boot) }
          .text : { *(.text) }
          .data : { *(.data) }
          .rodata : { *(.rodata) }
@@ -14,4 +13,6 @@ SECTIONS {
          . = ALIGN(8);
          . += 0x4000;
          LD_STACK_PTR = .;
+         PROGRAM_END = .;
+         PROGRAM_SIZE = PROGRAM_END - PROGRAM_START;
 }

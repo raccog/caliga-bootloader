@@ -8,13 +8,10 @@ pub mod arch;
 pub mod filesystem;
 pub mod firmware;
 
-use crate::filesystem::{FileSystemInterface};
+use crate::filesystem::FileSystemInterface;
 use alloc::{boxed::Box, vec::Vec};
-use log::info;
 
-pub struct BootConfig {
-
-}
+pub struct BootConfig {}
 
 pub struct BootInterface {
     pub config_buffer: BootConfig,
@@ -33,7 +30,6 @@ pub trait BlockDeviceInterface {
     }
 }
 
-pub unsafe fn caliga_main(boot: BootInterface) -> ! {
-
+pub unsafe fn caliga_main(_boot: BootInterface) -> ! {
     panic!("End of bootloader.");
 }

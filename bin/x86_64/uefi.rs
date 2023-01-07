@@ -5,11 +5,10 @@
 extern crate alloc;
 
 use caliga_bootloader::{
-    firmware::uefi::file_system::UefiSimpleFileSystemDriver,
-    BootInterface, BootConfig,
+    firmware::uefi::file_system::UefiSimpleFileSystemDriver, BootConfig, BootInterface,
 };
 
-use alloc::{boxed::Box, vec, vec::Vec};
+use alloc::{boxed::Box, vec};
 use core::{ops::DerefMut, panic::PanicInfo};
 use log::{error, info, warn};
 use uefi::{self, prelude::*};
