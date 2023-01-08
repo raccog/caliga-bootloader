@@ -3,6 +3,8 @@
 #![feature(allocator_api)]
 #![feature(panic_info_message)]
 
+extern crate alloc;
+
 use core::{
     arch::global_asm,
     cell::UnsafeCell,
@@ -11,6 +13,8 @@ use core::{
 };
 use log::{self, info, LevelFilter, Log, Metadata, Record};
 
+use caliga_bootloader::io::{io::Io, mmio::Mmio};
+
 // The start procedure
 global_asm!(include_str!("start.S"));
 
@@ -18,7 +22,7 @@ global_asm!(include_str!("start.S"));
 pub const UART0_ADDR: usize = 0x0900_0000;
 
 // An unimplemented allocator to see how it may be structured
-mod bump_allocator {
+//mod bump_allocator {
     use core::alloc::{GlobalAlloc, Layout};
 
     #[global_allocator]
@@ -28,12 +32,26 @@ mod bump_allocator {
 
     unsafe impl GlobalAlloc for Aarch64QemuAlloc {
         unsafe fn alloc(&self, _layout: Layout) -> *mut u8 {
-            unimplemented!();
+            panic!("Allocation is unimplemented!");
         }
 
         unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
             unimplemented!();
         }
+    }
+//}
+
+#[repr(packed)]
+pub struct Pl011Uart {
+    data: Mmio<u8>,
+}
+
+impl Write for Pl011Uart {
+    fn write_str(&mut self, out_string: &str) -> fmt::Result {
+        for out_byte in out_string.bytes() {
+            self.data.write(out_byte);
+        }
+        Ok(())
     }
 }
 
@@ -85,7 +103,7 @@ impl Write for UartPl011 {
 /// interior mutability, otherwise. Since this bootloader will always run on a single thread, there should be
 /// no problems with race conditions.
 struct UartPl011Logger {
-    uart: UnsafeCell<UartPl011>,
+    uart: UnsafeCell<&'static mut Pl011Uart>,
 }
 
 // Implement traits that are needed for `Log`
@@ -146,7 +164,8 @@ static mut LOGGER: Option<UartPl011Logger> = None;
 #[link_section = ".text.boot"]
 pub unsafe extern "C" fn qemu_entry() {
     // Initialize UART0
-    let uart = UartPl011::new(UART0_ADDR).unwrap();
+    //let uart = UartPl011::new(UART0_ADDR).unwrap();
+    let uart = unsafe { &mut *(UART0_ADDR as *mut Pl011Uart) };
 
     // Initialize logger using UART0
     let logger = {
