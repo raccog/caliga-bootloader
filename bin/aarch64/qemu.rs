@@ -22,22 +22,22 @@ pub const UART0_ADDR: usize = 0x0900_0000;
 
 // An unimplemented allocator to see how it may be structured
 //mod bump_allocator {
-    use core::alloc::{GlobalAlloc, Layout};
+use core::alloc::{GlobalAlloc, Layout};
 
-    #[global_allocator]
-    static GLOBAL_ALLOCATOR: Aarch64QemuAlloc = Aarch64QemuAlloc {};
+#[global_allocator]
+static GLOBAL_ALLOCATOR: Aarch64QemuAlloc = Aarch64QemuAlloc {};
 
-    struct Aarch64QemuAlloc;
+struct Aarch64QemuAlloc;
 
-    unsafe impl GlobalAlloc for Aarch64QemuAlloc {
-        unsafe fn alloc(&self, _layout: Layout) -> *mut u8 {
-            panic!("Allocation is unimplemented!");
-        }
-
-        unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
-            unimplemented!();
-        }
+unsafe impl GlobalAlloc for Aarch64QemuAlloc {
+    unsafe fn alloc(&self, _layout: Layout) -> *mut u8 {
+        panic!("Allocation is unimplemented!");
     }
+
+    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
+        unimplemented!();
+    }
+}
 //}
 
 #[repr(packed)]

@@ -1,18 +1,22 @@
 /// This implementation is a shortened version of the RedoxOS implementation found here:
 ///
 /// https://gitlab.redox-os.org/redox-os/syscall/-/blob/master/src/io/mmio.rs
-
-use core::{ptr::{read_volatile, write_volatile, addr_of, addr_of_mut}, mem::MaybeUninit};
+use core::{
+    mem::MaybeUninit,
+    ptr::{addr_of, addr_of_mut, read_volatile, write_volatile},
+};
 
 use crate::io::io::Io;
 
 #[repr(packed)]
 pub struct Mmio<T> {
-    value: MaybeUninit<T>
+    value: MaybeUninit<T>,
 }
 
 impl<T> Io for Mmio<T>
-where T: Copy + PartialEq {
+where
+    T: Copy + PartialEq,
+{
     type Value = T;
 
     fn read(&self) -> T {

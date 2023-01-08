@@ -10,14 +10,12 @@ pub trait Io {
 }
 
 pub struct ReadOnly<I> {
-    inner: I
+    inner: I,
 }
 
-impl <I> ReadOnly<I> {
+impl<I> ReadOnly<I> {
     pub const fn new(inner: I) -> ReadOnly<I> {
-        ReadOnly {
-            inner
-        }
+        ReadOnly { inner }
     }
 }
 
@@ -29,14 +27,12 @@ impl<I: Io> ReadOnly<I> {
 }
 
 pub struct WriteOnly<I> {
-    inner: I
+    inner: I,
 }
 
 impl<I> WriteOnly<I> {
     pub const fn new(inner: I) -> ReadOnly<I> {
-        ReadOnly {
-            inner
-        }
+        ReadOnly { inner }
     }
 }
 
