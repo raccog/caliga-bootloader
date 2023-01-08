@@ -9,7 +9,6 @@ use core::{
     arch::global_asm,
     cell::UnsafeCell,
     fmt::{self, Write},
-    ptr::{self},
 };
 use log::{self, info, LevelFilter, Log, Metadata, Record};
 
@@ -46,48 +45,30 @@ pub struct Pl011Uart {
     data: Mmio<u8>,
 }
 
+impl Pl011Uart {
+    /// Returns a [`Pl011Uart`] reference using a `base` address
+    ///
+    /// # Safety
+    ///
+    /// It is unsafe to use the referenced [`Pl011Uart`] because there could be an already existing reference.
+    /// If multiple references to a single Uart exist, the owner of each reference could overwrite the registers
+    /// used by the other reference.
+    ///
+    /// It should be ensured that when using this function, that another reference does not already exist.
+    ///
+    /// One exception to this rule is during a panic. As nothing else will be running, the panic handler
+    /// is allowed to use this for re-initializing a Uart so the panic log can be somewhat reliably
+    /// written to it. Note that this exception may not hold up if it's being used in multiple threads, as the
+    /// threads might panic separately.
+    pub unsafe fn new(base: usize) -> &'static mut Pl011Uart {
+        &mut *(base as *mut Pl011Uart)
+    }
+}
+
 impl Write for Pl011Uart {
     fn write_str(&mut self, out_string: &str) -> fmt::Result {
         for out_byte in out_string.bytes() {
             self.data.write(out_byte);
-        }
-        Ok(())
-    }
-}
-
-/// A very simple implementation of the PL011 UART peripheral
-pub struct UartPl011 {
-    base: usize,
-}
-
-impl UartPl011 {
-    /// Creates a new UART with a `base` address
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if `base` is an invalid UART address. It needs to be one of the following:
-    ///
-    /// * [`UART0_ADDR`]
-    pub fn new(base: usize) -> Result<Self, ()> {
-        match base as usize {
-            UART0_ADDR => Ok(Self { base }),
-            _ => Err(()),
-        }
-    }
-
-    /// Writes a byte to the UART's output FIFO
-    pub fn write_byte(&mut self, byte: u8) {
-        unsafe {
-            ptr::write_volatile(self.base as *mut u8, byte);
-        }
-    }
-}
-
-// Implemented so I can easily print strings to UART
-impl Write for UartPl011 {
-    fn write_str(&mut self, out_string: &str) -> fmt::Result {
-        for out_byte in out_string.bytes() {
-            self.write_byte(out_byte);
         }
         Ok(())
     }
@@ -149,11 +130,10 @@ impl Log for UartPl011Logger {
 
 #[panic_handler]
 fn handle_panic(info: &core::panic::PanicInfo) -> ! {
-    // Try to re-initialize UART0 and print a panic log
-    if let Ok(mut uart) = UartPl011::new(UART0_ADDR) {
-        // TODO: Maybe halt if this returns an error
-        writeln!(&mut uart, "[PANIC] {}", info).unwrap();
-    }
+    // Re-initialize UART0 and print a panic log
+    let uart = unsafe { Pl011Uart::new(UART0_ADDR) };
+    // TODO: Maybe halt if this returns an error
+    writeln!(uart, "[PANIC] {}", info).unwrap();
     loop {}
 }
 
@@ -164,8 +144,8 @@ static mut LOGGER: Option<UartPl011Logger> = None;
 #[link_section = ".text.boot"]
 pub unsafe extern "C" fn qemu_entry() {
     // Initialize UART0
-    //let uart = UartPl011::new(UART0_ADDR).unwrap();
-    let uart = unsafe { &mut *(UART0_ADDR as *mut Pl011Uart) };
+    // The only other place it should be initialized is during a panic for emergency serial output
+    let uart = unsafe { Pl011Uart::new(UART0_ADDR) };
 
     // Initialize logger using UART0
     let logger = {

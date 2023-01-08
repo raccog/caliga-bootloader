@@ -4,11 +4,6 @@
 
 extern crate alloc;
 
-use caliga_bootloader::{
-    firmware::uefi::file_system::UefiSimpleFileSystemDriver
-};
-
-use alloc::{boxed::Box, vec};
 use core::{ops::DerefMut, panic::PanicInfo};
 use log::{error, info, warn};
 use uefi::{self, prelude::*};
@@ -65,7 +60,7 @@ fn boot_uefi_entry(image_handle: Handle, mut system_table: SystemTable<Boot>) ->
         uefi_revision.minor()
     );
 
-    let root_directory = {
+    let _root_directory = {
         let bt = system_table.boot_services();
         // Get the file system that the bootloader image was loaded from
         // NOTE: This type of `expect`-based error logging is quick to write, but
