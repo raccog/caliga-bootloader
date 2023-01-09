@@ -59,10 +59,22 @@ Here's a checklist of some goals for this bootloader. Each goal is for both x86_
 - [x] Default text output device (uart for aarch64, efi_text_output for x86_64)
 - [x] Default logger
 - [x] Global allocator
+- [ ] Out of memory handler
+- [ ] Elf loader
+- [ ] Address mapping
+- [ ] Pass data to kernel (EFI table, DTB, ACPI table, etc.)
+- [ ] Construct memory map
+- [ ] Start running kernel
+
+Further goals:
+
+- [ ] RAM disk driver
+- [ ] Block device drivers
+- [ ] File system drivers
 
 ## x86_64 Status
 
-Some current parts of the x86_64 bootloader utilize the [uefi_services crate](https://docs.rs/uefi-services/latest/uefi_services/).
+Some current parts of the x86_64 bootloader utilize the [uefi_services crate](https://docs.rs/uefi-services/latest/uefi_services/) to accomplish the previous goals.
 
 I plan to wean off the features of this crate by slowly re-implementing them myself. This includes the following:
 
@@ -71,3 +83,4 @@ I plan to wean off the features of this crate by slowly re-implementing them mys
 - [ ] Default text output device
 - [ ] Default logger
 - [ ] Global allocator
+- [ ] Out of memory handler
