@@ -1,5 +1,5 @@
 include meta/mk/pre-config.mk
-include meta/mk/$(TARGET).mk
+include meta/mk/$(RUST_TARGET).mk
 include meta/mk/post-config.mk
 
 all: $(BOOTLOADER)

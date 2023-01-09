@@ -1,6 +1,6 @@
-TARGET ?= x86_64-unknown-uefi
+RUST_TARGET ?= aarch64-unknown-none
 
-CARGO_BUILD_ARGS := --target=meta/target-specs/$(TARGET).json
+CARGO_BUILD_ARGS := --target=meta/target-specs/$(RUST_TARGET).json
 
 # 1 for debug build, 0 for release build
 DEBUG ?= 1
@@ -12,4 +12,4 @@ else
 endif
 
 
-TARGET_BUILD_DIR := target/$(TARGET)/$(BUILD_TYPE)
+TARGET_BUILD_DIR := target/$(RUST_TARGET)/$(BUILD_TYPE)
