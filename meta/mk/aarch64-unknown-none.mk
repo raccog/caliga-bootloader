@@ -4,4 +4,4 @@ BOOTLOADER := $(TARGET_BUILD_DIR)/$(BINARY)
 
 .PHONY: qemu
 qemu: $(BOOTLOADER)
-	./meta/qemu-aarch64-virt.sh
+	QEMU_EXTRA_ARGS="$(QEMU_EXTRA_ARGS)" ./meta/qemu-aarch64-virt.sh

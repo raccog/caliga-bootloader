@@ -5,10 +5,10 @@ SECTIONS {
          . = 0x40100000;
          PROGRAM_START = .;
          .text.boot : { *(.text.boot) }
-         .text : { *(.text) }
-         .data : { *(.data) }
-         .rodata : { *(.rodata) }
-         .bss : { *(.bss COMMON) }
+         .text : { *(.text*) }
+         .data : { *(.data*) }
+         .rodata : { *(.rodata*) }
+         .bss : { *(.bss* COMMON) }
 
          . = ALIGN(8);
          . += 0x4000;

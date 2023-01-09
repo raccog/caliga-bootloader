@@ -5,12 +5,14 @@
 
 extern crate alloc;
 
+use alloc::vec;
 use core::{
     arch::global_asm,
     cell::UnsafeCell,
     fmt::{self, Write},
+    ptr
 };
-use log::{self, info, LevelFilter, Log, Metadata, Record};
+use log::{self, debug, info, LevelFilter, Log, Metadata, Record};
 
 use caliga_bootloader::io::{io::Io, mmio::Mmio};
 
@@ -25,18 +27,65 @@ pub const UART0_ADDR: usize = 0x0900_0000;
 use core::alloc::{GlobalAlloc, Layout};
 
 #[global_allocator]
-static GLOBAL_ALLOCATOR: Aarch64QemuAlloc = Aarch64QemuAlloc {};
+static GLOBAL_ALLOCATOR: BumpAllocator = BumpAllocator;
 
-struct Aarch64QemuAlloc;
+// Note that these are linker-defined variables.
+// Although they are declared as a `u8`, the address of each variable is the true value.
+//
+// So, to get PROGRAM_START as a `usize`, you need to do the following:
+//
+// ```
+// let program_start = &PROGRAM_START as *const u8 as usize;
+// ```
+extern "C" {
+    static PROGRAM_START: u8;
+    pub static PROGRAM_END: u8;
+    static PROGRAM_SIZE: u8;
+}
 
-unsafe impl GlobalAlloc for Aarch64QemuAlloc {
-    unsafe fn alloc(&self, _layout: Layout) -> *mut u8 {
-        panic!("Allocation is unimplemented!");
+/// The current pointer used by the bump allocator
+static mut BUMP_ALLOC_PTR: *const u8 = unsafe { &PROGRAM_END as *const u8 };
+const BUMP_ALLOC_ALIGNMENT: usize = 8;
+
+/// An extremely simple bump allocator.
+///
+/// Starts at a base address and increments the current pointer for each allocation. Never frees the
+/// allocations. Runs out of memory very quickly and should only be used for testing purposes.
+struct BumpAllocator;
+
+unsafe impl GlobalAlloc for BumpAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        // Ensure pointer is aligned
+        let offset = BUMP_ALLOC_PTR.align_offset(BUMP_ALLOC_ALIGNMENT);
+        BUMP_ALLOC_PTR = BUMP_ALLOC_PTR.add(offset);
+
+        // Ensure that pointer is aligned according to `layout`
+        if layout.align() > BUMP_ALLOC_ALIGNMENT {
+            let offset = BUMP_ALLOC_PTR.align_offset(layout.align());
+
+            // Return null if the alignment is invalid
+            if offset == usize::MAX {
+                return ptr::null_mut();
+            }
+
+            // Offset the pointer so that it's properly aligned
+            BUMP_ALLOC_PTR = BUMP_ALLOC_PTR.add(offset);
+        }
+
+        // Save the pointer to return later
+        let allocated = BUMP_ALLOC_PTR;
+
+        // Bump the current pointer by the allocation's size
+        // TODO: Panic if the end of RAM is reached
+        BUMP_ALLOC_PTR = BUMP_ALLOC_PTR.add(layout.size());
+
+        debug!("ALLOC@{:p} with size: {:#x} and align: {}", allocated, layout.size(), layout.align());
+
+        allocated as *mut u8
     }
 
-    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
-        unimplemented!();
-    }
+    // No deallocations ever take place
+    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {}
 }
 //}
 
@@ -106,16 +155,8 @@ impl Log for UartPl011Logger {
         // Get a mutable reference to the UART
         let uart = unsafe { &mut *self.uart.get() };
 
-        // Write log level
-        write!(uart, "[{}] ", record.level().as_str()).unwrap();
-
-        // Try to write log without any allocations
-        if let Some(args) = record.args().as_str() {
-            uart.write_str(args).unwrap();
-        } else {
-            uart.write_str("Could not get log; allocator needed")
-                .unwrap();
-        }
+        // Write log level and args
+        write!(uart, "[{}] {}", record.level().as_str(), record.args()).unwrap();
 
         // Try to write log file and line without any allocations
         if let (Some(file_name), Some(line)) = (record.file(), record.line()) {
@@ -154,9 +195,24 @@ pub unsafe extern "C" fn qemu_entry() {
     };
     log::set_logger(logger).unwrap();
     log::set_max_level(LevelFilter::Debug);
+    info!("Default logger is UART at address: {:#x}", UART0_ADDR);
 
-    // Test out logger
-    info!("Done with info log");
+    // Print out program address and size
+    debug!("PROGRAM_START: {:p}", &PROGRAM_START);
+    debug!("PROGRAM_END  : {:p}", &PROGRAM_END);
+    debug!("PROGRAM_SIZE : {:#x}", &PROGRAM_SIZE as *const u8 as usize);
+
+    // Test out allocator
+    {
+        let v1 = vec!['a', 'b', 'c', 'd'];
+        for (i, n) in v1.iter().enumerate() {
+            debug!("{} {}", i, n);
+        }
+    }
+    let v2 = vec!['w', 'x', 'y', 'z'];
+    for (i, n) in v2.iter().enumerate() {
+        debug!("{} {}", i, n);
+    }
 
     // TODO: Run kernel
     panic!("End of bootloader reached");

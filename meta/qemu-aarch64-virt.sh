@@ -6,4 +6,5 @@ qemu-system-aarch64 \
     -machine virt \
     -cpu cortex-a57 \
     -device loader,file=target/aarch64-unknown-none/debug/caliga-aarch64-qemu,addr=0x40100000,cpu-num=0 \
-    -nographic
+    -nographic \
+    $QEMU_EXTRA_ARGS
