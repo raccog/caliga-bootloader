@@ -2,17 +2,17 @@
 
 I am designing a multi-architecture bootloader to use in my hobby OS projects.
 
-Currently working on the bootstrap process for QEMU Aarch64 and QEMU x86_64 UEFI.
+Currently working on the bootstrap process for aarch64 and x86_64-UEFI.
 
 ## Build
 
 For now, this section is very brief, but I plan to expand it so that it can be really easy to build the bootloader and test it out.
 
-Note: Don't use the `-j` argument when running make. As cargo handles most of the build process, allowing Make to use multiple threads does not improve the build speed.
+Note: Don't use the `-j` argument when running make. As cargo handles most of the build process, allowing make to use multiple threads does not improve the build speed.
 
 ### Build and Run With Qemu
 
-To quickly test out the boot loader's Aarch64 implementation, run the following:
+To quickly test out the boot loader's aarch64 implementation, run the following:
 
 ``` shell
 make qemu
@@ -56,7 +56,7 @@ The only target triples currently supported are:
 
 ## Goals
 
-Here's a checklist of some goals for this bootloader. Each goal is for both x86_64 and Aarch64:
+Here's a checklist of some goals for this bootloader. Each goal is for both x86_64 and aarch64 and will only be checked off when implemented for both platforms:
 
 - [x] Entry point
 - [x] Panic handler
@@ -79,7 +79,7 @@ Further goals:
 
 ## x86_64 Status
 
-Some current parts of the x86_64 bootloader utilize the [uefi_services crate](https://docs.rs/uefi-services/latest/uefi_services/) to accomplish the previous goals.
+Some current parts of the x86_64 bootloader utilize the [uefi_services](https://docs.rs/uefi-services/latest/uefi_services/) crate to accomplish the previous goals.
 
 I plan to wean off the features of this crate by slowly re-implementing them myself. This includes the following:
 
