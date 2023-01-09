@@ -11,5 +11,7 @@ else
 	CARGO_BUILD_ARGS += --release
 endif
 
-EXTERNAL_BUILD_DIR := build-external
-TARGET_BUILD_DIR := target/$(RUST_TARGET)/$(BUILD_TYPE)
+export TOOLCHAIN_BUILD_DIR := build-toolchain
+export TARGET_BUILD_DIR := target/$(RUST_TARGET)/$(BUILD_TYPE)
+
+export QEMU_EXTRA_ARGS ?=

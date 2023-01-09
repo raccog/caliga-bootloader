@@ -1,8 +1,6 @@
 #!/bin/bash
 
-set -e
-
-OVMF_DST_PATH=build-external/OVMF.fd
+set -eu
 
 echo "Caching UEFI firmware"
 
@@ -15,7 +13,7 @@ OVMF_LOCATIONS="/usr/share/edk2/x64/OVMF.fd
 for ovmf in $OVMF_LOCATIONS; do
     if [[ -f "$ovmf" ]]; then
         # Cache firmware if it's found
-        cp "$ovmf" "$OVMF_DST_PATH"
+        cp -v "$ovmf" "$OVMF_DST"
         exit 0
     fi
 done

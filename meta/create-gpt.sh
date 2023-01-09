@@ -1,16 +1,13 @@
 #!/bin/bash
 
-if [[ -z "$1" ]]; then
-    echo "ERROR: meta/create-gpt.sh was called with an empty filename" >&2
-    exit 1
-fi
+set -eu
 
 if which parted; then
     # Use parted on Linux systems
-	dd if=/dev/zero of=$1 bs=1M count=66
-	parted -s "$1" mklabel gpt
-	parted -s "$1" mkpart ESP fat32 2048s 100%
-	parted -s "$1" set 1 esp on
+	dd if=/dev/zero of=$DISK_IMG bs=1M count=66
+	parted -s "$DISK_IMG" mklabel gpt
+	parted -s "$DISK_IMG" mkpart ESP fat32 2048s 100%
+	parted -s "$DISK_IMG" set 1 esp on
 elif which hdiutil; then
     # Use hdiutil on MacOS systems
     #
@@ -20,14 +17,14 @@ elif which hdiutil; then
     # the image needs to have a .dmg extension to be created by hdiutil.
     #
     # Maybe search for a better partitioning method?
-    DMG="$1.dmg"
+    DMG="$DISK_IMG.dmg"
     if [[ -f "$DMG" ]]; then
         rm "$DMG"
     fi
     hdiutil create -size 66m -fs FAT32 -volname ESP -layout GPTSPUD "$DMG"
-    mv "$DMG" "$1"
+    mv "$DMG" "$DISK_IMG"
 else
-    echo "ERROR: Neither 'parted' or 'gpt' are installed. Cannot create a gpt partition with meta/create-gpt.sh" >&2
+    echo "ERROR: Neither 'parted' or 'hdiutil' are installed. Cannot create a gpt partition image with meta/create-gpt.sh" >&2
     exit 2
 fi
 

@@ -12,4 +12,8 @@ FORCE:
 .PHONY: clean
 clean:
 	cargo clean
-	rm -rf build-external
+
+# TODO: Add more checks to ensure that this doesn't remove any important files
+.PHONY: distclean
+distclean: clean
+	rm -rf --preserve-root $(TOOLCHAIN_BUILD_DIR)
