@@ -64,6 +64,7 @@ Here's a checklist of some goals for this bootloader. Each goal is for both x86_
 - [x] Default logger
 - [x] Global allocator
 - [ ] Out of memory handler
+- [ ] Initial method of loading kernel image (embedded ELF section for aarch64 and simple file system for x86_64 UEFI)
 - [ ] Elf loader
 - [ ] Address mapping
 - [ ] Pass data to kernel (EFI table, DTB, ACPI table, etc.)
