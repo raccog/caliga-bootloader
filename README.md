@@ -26,9 +26,13 @@ If you just want to build and not run in qemu, remove 'qemu' from the arguments:
 make
 ```
 
-### Switch Target Architecture
+### Note about UEFI Firmware
 
-Note: It may be difficult to run for `x86_64-unknown-uefi` because the build system currently assumes that OVMF will be used from the default Arch Linux path (`/usr/share/ovmf/x64/OVMF.fd`). I will soon change this so that it will instead be automatically downloaded.
+It may be difficult to run for `x86_64-unknown-uefi` because the build system currently assumes that OVMF will be used from one of the default Linux paths (`/usr/share/**/OVMF.fd`).
+
+If it's not found, then it will be compiled from scratch. This may fail if you don't have all the OVMF build dependencies, listed [here](https://github.com/tianocore/tianocore.github.io/wiki/How-to-build-OVMF). I will soon change this so that it will instead be automatically downloaded, but I haven't found a reliable source yet.
+
+### Switch Target Architecture
 
 If you want to run a different architecture, export it's target triple under the variable `RUST_TARGET`:
 
