@@ -215,5 +215,5 @@ pub unsafe extern "C" fn qemu_entry() {
     }
 
     // TODO: Run kernel
-    panic!("End of bootloader reached");
+    panic!("End of bootloader reached. Press 'CTRL+A' and then 'X' to exit.");
 }
