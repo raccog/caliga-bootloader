@@ -4,7 +4,7 @@ BOOTLOADER := $(TARGET_BUILD_DIR)/$(BINARY).efi
 ESP_IMG := $(TARGET_BUILD_DIR)/esp.img
 DISK_IMG := $(TARGET_BUILD_DIR)/disk.img
 
-OVMF_DST := $(TARGET_BUILD_DIR)/ovmf.fd
+OVMF_DST := $(EXTERNAL_BUILD_DIR)/OVMF.fd
 
 CARGO_BUILD_ARGS += --features="uefi"
 
@@ -21,8 +21,8 @@ $(DISK_IMG): $(ESP_IMG)
 	dd if=$< of=$@ bs=1M seek=1 count=64 conv=notrunc
 
 $(OVMF_DST):
-	export OVMF
-	cp $(shell ./meta/find-ovmf.sh) $@
+	mkdir -p build-external
+	./meta/ovmf-cache.sh || ./meta/ovmf-compile.sh
 
 .PHONY: qemu
 qemu: $(DISK_IMG) $(OVMF_DST)

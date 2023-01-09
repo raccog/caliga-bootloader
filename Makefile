@@ -12,3 +12,4 @@ FORCE:
 .PHONY: clean
 clean:
 	cargo clean
+	rm -rf build-external
