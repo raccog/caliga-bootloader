@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![feature(alloc_error_handler)]
 #![feature(allocator_api)]
 #![feature(panic_info_message)]
 
@@ -55,6 +56,10 @@ struct BumpAllocator;
 
 unsafe impl GlobalAlloc for BumpAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        // TODO: This allocator needs to return a null pointer if it does not have enough memory for the
+        //       allocation. This requires the boot loader to know where the memory ends. Not sure how this
+        //       is done on ARM, yet.
+
         // Ensure pointer is aligned
         let offset = BUMP_ALLOC_PTR.align_offset(BUMP_ALLOC_ALIGNMENT);
         BUMP_ALLOC_PTR = BUMP_ALLOC_PTR.add(offset);
@@ -172,10 +177,17 @@ impl Log for UartPl011Logger {
 #[panic_handler]
 fn handle_panic(info: &core::panic::PanicInfo) -> ! {
     // Re-initialize UART0 and print a panic log
+    // TODO: Try to use already existing UART so that no stack allocation occurs
     let uart = unsafe { Pl011Uart::new(UART0_ADDR) };
     // TODO: Maybe halt if this returns an error
     writeln!(uart, "[PANIC] {}", info).unwrap();
     loop {}
+}
+
+#[alloc_error_handler]
+fn handle_out_of_memory(layout: core::alloc::Layout) -> ! {
+    // Try to panic with the current logger
+    panic!("Out of memory! {:#?}", layout);
 }
 
 // The default logger
