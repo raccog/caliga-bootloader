@@ -23,6 +23,32 @@ global_asm!(include_str!("start.S"));
 /// Address of UART0 on default QEMU for aarch64
 pub const UART0_ADDR: usize = 0x0900_0000;
 
+// TODO: Move this to its own file
+pub mod intrusive_list {
+    pub struct IntrusiveList<T> {
+        pub allocated_nodes: *const T,
+        pub capacity: usize,
+    }
+
+    pub struct IntrusiveNode<T> {
+        pub next: *const T,
+    }
+}
+
+use intrusive_list::{IntrusiveNode, IntrusiveList};
+
+struct FreeMemoryChunk {
+    data: *const u8,
+    node: Option<IntrusiveNode<FreeMemoryChunk>>
+}
+
+static mut FREE_MEMORY: Option<IntrusiveList<FreeMemoryChunk>> = None;
+
+struct MemoryRange {
+    pub start: usize,
+    pub size: usize
+}
+
 // An unimplemented allocator to see how it may be structured
 //mod bump_allocator {
 use core::alloc::{GlobalAlloc, Layout};
@@ -45,7 +71,7 @@ extern "C" {
 }
 
 /// The current pointer used by the bump allocator
-static mut BUMP_ALLOC_PTR: *const u8 = unsafe { &PROGRAM_END as *const u8 };
+static mut BUMP_ALLOC_PTR: Option<*const u8> = None;
 const BUMP_ALLOC_ALIGNMENT: usize = 8;
 
 /// An extremely simple bump allocator.
@@ -56,17 +82,23 @@ struct BumpAllocator;
 
 unsafe impl GlobalAlloc for BumpAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        if BUMP_ALLOC_PTR.is_none() {
+            return ptr::null_mut();
+        }
+
+        let mut alloc_ptr = BUMP_ALLOC_PTR.unwrap();
+
         // TODO: This allocator needs to return a null pointer if it does not have enough memory for the
         //       allocation. This requires the boot loader to know where the memory ends. Not sure how this
         //       is done on ARM, yet.
 
         // Ensure pointer is aligned
-        let offset = BUMP_ALLOC_PTR.align_offset(BUMP_ALLOC_ALIGNMENT);
-        BUMP_ALLOC_PTR = BUMP_ALLOC_PTR.add(offset);
+        let offset = alloc_ptr.align_offset(BUMP_ALLOC_ALIGNMENT);
+        alloc_ptr = alloc_ptr.add(offset);
 
         // Ensure that pointer is aligned according to `layout`
         if layout.align() > BUMP_ALLOC_ALIGNMENT {
-            let offset = BUMP_ALLOC_PTR.align_offset(layout.align());
+            let offset = alloc_ptr.align_offset(layout.align());
 
             // Return null if the alignment is invalid
             if offset == usize::MAX {
@@ -74,15 +106,15 @@ unsafe impl GlobalAlloc for BumpAllocator {
             }
 
             // Offset the pointer so that it's properly aligned
-            BUMP_ALLOC_PTR = BUMP_ALLOC_PTR.add(offset);
+            alloc_ptr = alloc_ptr.add(offset);
         }
 
         // Save the pointer to return later
-        let allocated = BUMP_ALLOC_PTR;
+        let allocated = alloc_ptr;
 
         // Bump the current pointer by the allocation's size
         // TODO: Panic if the end of RAM is reached
-        BUMP_ALLOC_PTR = BUMP_ALLOC_PTR.add(layout.size());
+        BUMP_ALLOC_PTR = Some(alloc_ptr.add(layout.size()));
 
         debug!("ALLOC@{:p} with size: {:#x} and align: {}", allocated, layout.size(), layout.align());
 
@@ -92,7 +124,6 @@ unsafe impl GlobalAlloc for BumpAllocator {
     // No deallocations ever take place
     unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {}
 }
-//}
 
 #[repr(packed)]
 pub struct Pl011Uart {
@@ -196,9 +227,39 @@ static mut LOGGER: Option<UartPl011Logger> = None;
 #[no_mangle]
 #[link_section = ".text.boot"]
 pub unsafe extern "C" fn qemu_entry() {
+    // TODO: Read memory range from DTB file
+    let memory_range: MemoryRange = MemoryRange {
+        // Starts at the end of the bootloader program
+        start: &PROGRAM_END as *const u8 as usize,
+        // 128MB
+        size: 0x800_0000
+    };
+
+    // Ensure that there's at least two 4KB pages of memory
+    if memory_range.size < 0x2000 {
+        panic!("There is not enough memory for any allocations");
+    }
+
     // Initialize UART0
     // The only other place it should be initialized is during a panic for emergency serial output
     let uart = unsafe { Pl011Uart::new(UART0_ADDR) };
+
+    // Initialize the free memory list
+    FREE_MEMORY = {
+        let mut free_memory = IntrusiveList {
+            allocated_nodes: memory_range.start as *const FreeMemoryChunk,
+            capacity: memory_range.size / 0x1000
+        };
+
+        let memory_list_size = free_memory.capacity * core::mem::size_of::<FreeMemoryChunk>();
+
+        *(free_memory.allocated_nodes as *mut FreeMemoryChunk) = FreeMemoryChunk {
+            data: (memory_range.start + memory_list_size) as *const u8,
+            node: None
+        };
+
+        Some(free_memory)
+    };
 
     // Initialize logger using UART0
     let logger = {
@@ -214,15 +275,24 @@ pub unsafe extern "C" fn qemu_entry() {
     debug!("PROGRAM_END  : {:p}", &PROGRAM_END);
     debug!("PROGRAM_SIZE : {:#x}", &PROGRAM_SIZE as *const u8 as usize);
 
+    if let Some(free_memory) = &FREE_MEMORY {
+        let first_chunk = (*free_memory.allocated_nodes).data;
+        debug!("First chunk: {:#?}", first_chunk);
+
+        BUMP_ALLOC_PTR = Some(first_chunk);
+    }
+
     // Test out allocator
-    {
-        let v1 = vec!['a', 'b', 'c', 'd'];
-        for (i, n) in v1.iter().enumerate() {
-            debug!("{} {}", i, n);
-        }
+    let v1 = vec!['a', 'b', 'c', 'd'];
+    for (i, n) in v1.iter().enumerate() {
+        debug!("{} {}", i, n);
     }
     let v2 = vec!['w', 'x', 'y', 'z'];
     for (i, n) in v2.iter().enumerate() {
+        debug!("{} {}", i, n);
+    }
+    debug!("Original:");
+    for (i, n) in v1.iter().enumerate() {
         debug!("{} {}", i, n);
     }
 
