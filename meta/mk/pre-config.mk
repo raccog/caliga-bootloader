@@ -1,6 +1,6 @@
 RUST_TARGET ?= aarch64-unknown-none
 
-CARGO_BUILD_ARGS := --target=meta/target-specs/$(RUST_TARGET).json
+CARGO_BUILD_ARGS := --target=meta/target-specs/$(RUST_TARGET).json -Zbuild-std=core,alloc,compiler_builtins
 
 # 1 for debug build, 0 for release build
 DEBUG ?= 1

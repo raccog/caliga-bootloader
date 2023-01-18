@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 #![feature(strict_provenance)]
 
 extern crate alloc;
@@ -8,3 +8,5 @@ pub mod arch;
 pub mod filesystem;
 pub mod firmware;
 pub mod io;
+
+pub mod intrusive_list;

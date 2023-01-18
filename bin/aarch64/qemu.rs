@@ -11,7 +11,7 @@ use core::{
     arch::global_asm,
     cell::UnsafeCell,
     fmt::{self, Write},
-    ptr
+    ptr,
 };
 use log::{self, debug, info, LevelFilter, Log, Metadata, Record};
 
@@ -84,7 +84,12 @@ unsafe impl GlobalAlloc for BumpAllocator {
         // TODO: Panic if the end of RAM is reached
         BUMP_ALLOC_PTR = BUMP_ALLOC_PTR.add(layout.size());
 
-        debug!("ALLOC@{:p} with size: {:#x} and align: {}", allocated, layout.size(), layout.align());
+        debug!(
+            "ALLOC@{:p} with size: {:#x} and align: {}",
+            allocated,
+            layout.size(),
+            layout.align()
+        );
 
         allocated as *mut u8
     }

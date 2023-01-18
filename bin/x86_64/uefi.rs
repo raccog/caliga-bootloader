@@ -5,7 +5,7 @@
 extern crate alloc;
 
 use core::{ops::DerefMut, panic::PanicInfo};
-use log::{error, debug, info, warn};
+use log::{debug, error, info, warn};
 use uefi::{self, prelude::*, proto::loaded_image::LoadedImage};
 use uefi_services::println;
 
@@ -64,11 +64,15 @@ fn boot_uefi_entry(image_handle: Handle, mut system_table: SystemTable<Boot>) ->
     {
         // `loaded_image` needs to be dropped at the end of this inner block so that it can be opened again
         // later
-        let loaded_image = bt.open_protocol_exclusive::<LoadedImage>(image_handle)
+        let loaded_image = bt
+            .open_protocol_exclusive::<LoadedImage>(image_handle)
             .expect("Could not open UEFI image handle");
         let (image_addr, image_size) = loaded_image.info();
         debug!("PROGRAM_START: {:p}", image_addr);
-        debug!("PROGRAM_END  : {:#x}", image_addr as usize + image_size as usize);
+        debug!(
+            "PROGRAM_END  : {:#x}",
+            image_addr as usize + image_size as usize
+        );
         debug!("PROGRAM_SIZE : {:#x}", image_size);
     }
 
