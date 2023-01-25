@@ -1,9 +1,9 @@
-# Introduction
+# Prefix
 
-This bootloader is a hobby project of mine for eventually booting my (to-be-made) operating system on different hardware.
+Though this book is currently in the repository of a bootloader, it contains plans for an operating system. This repository will likely be merged into a monorepo when the related kernel is created.
 
-There isn't any real goal or plan, I'm mostly fumbling around for fun while learning a lot in the process. So I guess fun and learning could be called the main two goals.
+## Objectives
 
-The design of this bootloader has and will change a lot. This book is mostly a collection of my thoughts while developing this bootloader.
+The main goals for this operating system are to learn stuff and have fun. I simply enjoy designing "bare-metal programs" (programs that run directly on hardware with limited or no firmware) from scratch. :)
 
-When I start working on my operating system, this book will probably be merged into a book for that operating system.
+I'm trying to keep track of my objectives through a roadmap. This roadmap will be separeted into stages; each with a list of things I want to implement. It can be found [here](./roadmap.md).
