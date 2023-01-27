@@ -1,6 +1,8 @@
 # Physical Memory Allocation
 
-NOTE: None of this is final. Just planning how I want my memory allocator to work.
+NOTE: None of this is final. Just planning how I want my physical memory allocator to work.
+
+I am calling this a "physical memory allocator" because the boot loader (or firmware) will identity map the available RAM before booting the kernel. Thus, although it may technically be working with virtual addresses, I will be referring to them as physical because the virtual and physical addresses will be identical for the entire boot process.
 
 ## Free Blocks List
 
