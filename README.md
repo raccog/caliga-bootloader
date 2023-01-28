@@ -60,9 +60,12 @@ Here's a checklist of some goals for this bootloader. Each goal is for both x86_
 
 - [x] Entry point
 - [x] Panic handler
-- [x] Default text output device (uart for aarch64, efi_text_output for x86_64)
+- [x] Default text output device (uart for aarch64, `efi_text_output` for x86_64)
 - [x] Default logger
 - [x] Global allocator
+- [ ] Slab allocator
+- [ ] Intrusive linked list
+- [ ] Linked list allocator
 - [ ] Out of memory handler
 - [ ] Initial method of loading kernel image (embedded ELF section for aarch64 and simple file system for x86_64 UEFI)
 - [ ] Elf loader
