@@ -15,7 +15,8 @@ At the beginning of the first free block of memory [1], an intrusive linked list
 Each entry for a free block of memory only needs two things; the starting address of the free block and the address of the next entry in the free block list.
 
 ```rust
-#[repr(packed)]
+# use std::ptr::NonNull;
+# struct BlockHeader;
 struct FreeBlockEntry {
     block: NonNull<BlockHeader>,
     next_entry: Option<NonNull<FreeBlockEntry>>
@@ -38,13 +39,14 @@ struct BlockHeader {
 The first usable memory address after the block header can be retrieved with a function:
 
 ```rust
+# struct BlockHeader;
 impl BlockHeader {
-    pub fn block_ptr(&self) -> *const u8 {
+    pub unsafe fn block_ptr(&self) -> *const u8 {
         // Alignment for start of each free block
         const ALIGN: usize = 8;
         
         // Get size of header
-        let offset = std::mem::size_of::<BlockHeader>();
+        let mut offset = std::mem::size_of::<BlockHeader>();
         
         // Ensure block is aligned properly
         let align_remainder = offset % ALIGN;
@@ -53,10 +55,8 @@ impl BlockHeader {
         }
         
         // Return address of block start
-        unsafe {
-            (self as *const BlockHeader as *const u8)
-                .add(offset)
-        }
+        (self as *const BlockHeader as *const u8)
+            .add(offset)
     }
 }
 ```
