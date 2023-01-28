@@ -1,4 +1,6 @@
 #![cfg_attr(not(test), no_std)]
+#![feature(allocator_api)]
+#![feature(ptr_sub_ptr)]
 #![feature(strict_provenance)]
 
 extern crate alloc;
@@ -9,4 +11,4 @@ pub mod filesystem;
 pub mod firmware;
 pub mod io;
 
-pub mod intrusive_list;
+pub mod common;
