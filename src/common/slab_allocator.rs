@@ -70,7 +70,7 @@ impl SlabAllocator {
     ///
     /// Returns [`SlabAllocatorError::InvalidSize`] if `size` is not divisible by `layout.size()` or if `storage` cannot
     /// store two or more objects (one for the bitmap)
-    pub fn new(storage: *const u8, size: usize, layout: Layout) -> Result<SlabAllocator, SlabAllocatorError> {
+    pub unsafe fn new(storage: *const u8, size: usize, layout: Layout) -> Result<SlabAllocator, SlabAllocatorError> {
         // Return error if size is invalid
         let layout_size = layout.size();
         if size % layout_size != 0 || size < layout_size * 2 {
@@ -83,10 +83,8 @@ impl SlabAllocator {
         };
 
         // Zero all memory
-        unsafe {
-            slab_allocator.bitmap().fill(0);
-            slab_allocator.buffer().fill(0);
-        }
+        slab_allocator.bitmap().fill(0);
+        slab_allocator.buffer().fill(0);
 
         Ok(slab_allocator)
     }
@@ -194,8 +192,10 @@ mod tests {
         // Init allocator
         let storage: Vec<u8> = vec![0; 8 * 8];
         let layout = Layout::new::<u64>();
-        let slab_allocator = SlabAllocator::new(storage.as_ptr(), storage.len(), layout)
-            .expect("Failed to create allocator");
+        let slab_allocator = unsafe {
+            SlabAllocator::new(storage.as_ptr(), storage.len(), layout)
+                .expect("Failed to create allocator")
+        };
 
         // Allocate
         let allocated = slab_allocator
