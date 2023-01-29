@@ -19,8 +19,8 @@ pub struct SlabAllocator {
 
 impl SlabAllocator {
     /// Returns the bitmap used for keeping track of used memory
-    fn bitmap(&self) -> &mut [u8] {
-        unsafe { slice::from_raw_parts_mut(self.bitmap_ptr() as *mut u8, self.bitmap_size()) }
+    unsafe fn bitmap(&self) -> &mut [u8] {
+        slice::from_raw_parts_mut(self.bitmap_ptr() as *mut u8, self.bitmap_size())
     }
 
     /// Returns the bitmap used for keeping track of used memory
@@ -45,8 +45,8 @@ impl SlabAllocator {
     }
 
     /// Returns the buffer used for allocating objects
-    fn buffer(&self) -> &mut [u8] {
-        unsafe { slice::from_raw_parts_mut(self.buffer_ptr() as *mut u8, self.buffer_size()) }
+    unsafe fn buffer(&self) -> &mut [u8] {
+        slice::from_raw_parts_mut(self.buffer_ptr() as *mut u8, self.buffer_size())
     }
 
     /// Returns the buffer used for allocating objects
@@ -81,8 +81,10 @@ impl SlabAllocator {
         };
 
         // Zero all memory
-        slab_allocator.bitmap().fill(0);
-        slab_allocator.buffer().fill(0);
+        unsafe {
+            slab_allocator.bitmap().fill(0);
+            slab_allocator.buffer().fill(0);
+        }
 
         Ok(slab_allocator)
     }
@@ -127,7 +129,10 @@ unsafe impl Allocator for SlabAllocator {
         }
 
         // Loop through each byte in bitmap to check for zeroed bits
-        for (i, bitmap_part) in self.bitmap().iter_mut().enumerate() {
+        let bitmap = unsafe {
+            self.bitmap()
+        };
+        for (i, bitmap_part) in bitmap.iter_mut().enumerate() {
             // Check if byte contains any zeroed bits
             if *bitmap_part < u8::MAX {
                 // Get index of first free bit
