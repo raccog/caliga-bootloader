@@ -19,39 +19,50 @@ pub struct SlabAllocator {
 
 impl SlabAllocator {
     /// Returns the bitmap used for keeping track of used memory
-    pub fn bitmap(&self) -> &mut [u8] {
+    fn bitmap(&self) -> &mut [u8] {
         unsafe { slice::from_raw_parts_mut(self.bitmap_ptr() as *mut u8, self.bitmap_size()) }
     }
 
     /// Returns the bitmap used for keeping track of used memory
-    pub unsafe fn bitmap_ptr(&self) -> *const u8 {
+    unsafe fn bitmap_ptr(&self) -> *const u8 {
         self.storage
     }
 
-    /// Returns the size of the bitmap
-    pub fn bitmap_size(&self) -> usize {
-        self.size / self.layout.size() / 8
+    /// Returns the size of the bitmap in bits
+    fn bitmap_num_bits(&self) -> usize {
+        self.size / self.layout.size()
+    }
+
+    /// Returns the size of the bitmap in bytes
+    fn bitmap_size(&self) -> usize {
+        const NUM_BITS: usize = 8;
+        let full_bytes = self.bitmap_num_bits() / NUM_BITS;
+        if self.bitmap_num_bits() % NUM_BITS != 0 {
+            full_bytes + 1
+        } else {
+            full_bytes
+        }
     }
 
     /// Returns the buffer used for allocating objects
-    pub fn buffer(&self) -> &mut [u8] {
+    fn buffer(&self) -> &mut [u8] {
         unsafe { slice::from_raw_parts_mut(self.buffer_ptr() as *mut u8, self.buffer_size()) }
     }
 
     /// Returns the buffer used for allocating objects
-    pub unsafe fn buffer_ptr(&self) -> *const u8 {
-        let after_bitmap = self.storage.add(self.bitmap_size());
-        let offset = after_bitmap.align_offset(self.layout.align());
-        after_bitmap.add(offset)
+    unsafe fn buffer_ptr(&self) -> *const u8 {
+        let bitmap_end = self.storage.add(self.bitmap_size());
+        let offset = bitmap_end.align_offset(self.layout.align());
+        bitmap_end.add(offset)
     }
 
     /// Returns the size of the slab allocation buffer in bytes
-    pub fn buffer_size(&self) -> usize {
+    fn buffer_size(&self) -> usize {
         unsafe { self.end().sub_ptr(self.buffer_ptr()) }
     }
 
     /// Returns a pointer to the byte after the last byte in this allocator's storage
-    pub unsafe fn end(&self) -> *const u8 {
+    unsafe fn end(&self) -> *const u8 {
         self.storage.add(self.size)
     }
 
