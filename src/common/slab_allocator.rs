@@ -68,10 +68,12 @@ impl SlabAllocator {
 
     /// Initializes a new slab allocator for objects with this `layout`
     ///
-    /// Returns [`SlabAllocatorError::InvalidSize`] if `size` is not divisible by `layout.size()` or if `storage` cannot store two or more objects
+    /// Returns [`SlabAllocatorError::InvalidSize`] if `size` is not divisible by `layout.size()` or if `storage` cannot
+    /// store two or more objects (one for the bitmap)
     pub fn new(storage: *const u8, size: usize, layout: Layout) -> Result<SlabAllocator, SlabAllocatorError> {
         // Return error if size is invalid
-        if size % layout.size() != 0 || size / layout.size() < 2 {
+        let layout_size = layout.size();
+        if size % layout_size != 0 || size < layout_size * 2 {
             return Err(SlabAllocatorError::InvalidSize);
         }
 
