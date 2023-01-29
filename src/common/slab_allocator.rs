@@ -58,7 +58,7 @@ impl SlabAllocator {
 
     /// Returns the size of the slab allocation buffer in bytes
     fn buffer_size(&self) -> usize {
-        unsafe { self.end().sub_ptr(self.buffer_ptr()) }
+        self.size - self.bitmap_size()
     }
 
     /// Returns a pointer to the byte after the last byte in this allocator's storage
