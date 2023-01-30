@@ -85,7 +85,14 @@ impl SlabAllocator {
 
     /// Returns the size of the slab allocation buffer in bytes
     fn buffer_size(&self) -> usize {
-        self.size - self.bitmap_size()
+        // Ensure that padding is included in the bitmap's size
+        let mut bitmap_size = self.bitmap_size();
+        let alignment = bitmap_size % self.layout.align();
+        if alignment != 0 {
+            bitmap_size += self.layout.align() - alignment;
+        }
+
+        self.size - bitmap_size
     }
 
     /// Returns a pointer to the byte after the last byte in this allocator's storage
