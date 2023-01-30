@@ -102,8 +102,10 @@ impl SlabAllocator {
 
     /// Initializes a new slab allocator for objects with this `layout`
     ///
+    /// # Errors
+    ///
     /// Returns [`SlabAllocatorError::InvalidSize`] if `size` is not divisible by `layout.size()` or if `storage` cannot
-    /// store two or more objects (one for the bitmap)
+    /// store two or more objects (at least one for the bitmap)
     pub unsafe fn new(storage: *const u8, size: usize, layout: Layout) -> Result<SlabAllocator, SlabAllocatorError> {
         // Return error if size is invalid
         let layout_size = layout.size();
@@ -165,18 +167,24 @@ fn bit_mask(free_bit: u8) -> u8 {
 }
 
 unsafe impl Allocator for SlabAllocator {
+    // Returns `AllocError` if:
+    //
+    // * `layout.align()` does not match this slab allocator's alignment
+    // * There is no memory block large enough to allocate `layout.size()` sequential bytes
+    //
+    // NOTE: This currently will suffer from some memory fragmentation unless all allocations are the same size
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         // Return error if layouts do not match
         if self.layout != layout {
             return Err(AllocError);
         }
 
-        // Loop through each byte in bitmap to check for zeroed bits
+        // Find a large enough free block of memory using the bitmap
         let bitmap = unsafe {
             self.bitmap()
         };
         for (i, bitmap_part) in bitmap.iter_mut().enumerate() {
-            // Check if byte contains any zeroed bits
+            // Check if this part of the bitmap contains any free memory
             if *bitmap_part < u8::MAX {
                 // Get index of first free bit
                 let free_bit = first_free_bit(*bitmap_part);
