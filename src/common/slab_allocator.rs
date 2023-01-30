@@ -1,4 +1,8 @@
 use core::{alloc::{Allocator, AllocError, Layout}, ptr::{NonNull, self}, slice};
+#[cfg(not(test))]
+use log::debug;
+#[cfg(test)]
+use std::println as debug;
 
 /// Error cases when using a [`SlabAllocator`]
 #[derive(Clone, Copy, Debug)]
@@ -30,18 +34,41 @@ impl SlabAllocator {
 
     /// Returns the size of the bitmap in bits
     fn bitmap_num_bits(&self) -> usize {
-        self.size / self.layout.size()
+        const BYTE_BITS: usize = 8;
+
+        // Calculate how many bytes are taken up by the bitmap and its padding
+        let num_bits = self.size / self.layout.size();
+        let mut bitmap_size = num_bits / BYTE_BITS;
+
+        // Ensure that all bits are included
+        if num_bits % BYTE_BITS != 0 {
+            bitmap_size += 1
+        }
+
+        // Ensure that padding is included
+        let alignment = bitmap_size % self.layout.align();
+        if alignment != 0 {
+            bitmap_size += self.layout.align() - alignment;
+        }
+
+        // Final calculation using the real size of the bitmap
+        (self.size - bitmap_size) / self.layout.size()
     }
 
     /// Returns the size of the bitmap in bytes
     fn bitmap_size(&self) -> usize {
-        const NUM_BITS: usize = 8;
-        let full_bytes = self.bitmap_num_bits() / NUM_BITS;
-        if self.bitmap_num_bits() % NUM_BITS != 0 {
-            full_bytes + 1
-        } else {
-            full_bytes
+        const BYTE_BITS: usize = 8;
+
+        // Use previous bitmap size to get the real bitmap size
+        let num_bits = self.bitmap_num_bits();
+        let mut bitmap_size = num_bits / BYTE_BITS;
+
+        // Ensure all bits are included
+        if num_bits % BYTE_BITS != 0 {
+            bitmap_size += 1
         }
+
+        bitmap_size
     }
 
     /// Returns the buffer used for allocating objects
@@ -85,6 +112,15 @@ impl SlabAllocator {
         // Zero all memory
         slab_allocator.bitmap().fill(0);
         slab_allocator.buffer().fill(0);
+
+        // Mask bits for memory that is unavailable
+        let available_bits = slab_allocator.bitmap_num_bits() % 8;
+        if available_bits != 0 {
+            *slab_allocator.bitmap().last_mut().unwrap() = u8::MAX << available_bits;
+        }
+
+        debug!("{:#?} bitmap: {:#?} {:#?} buffer: {:#?} bitmap_bits: {:#?} buffer_size: {:#?}", slab_allocator, slab_allocator.bitmap_ptr(), slab_allocator.bitmap(), slab_allocator.buffer_ptr(), slab_allocator.bitmap_num_bits(),
+        slab_allocator.buffer_size());
 
         Ok(slab_allocator)
     }
@@ -146,6 +182,7 @@ unsafe impl Allocator for SlabAllocator {
                 // Return a slice of the memory location
                 unsafe {
                     let ptr = self.buffer_ptr().add(free_index * self.layout.size());
+                    debug!("Alloc {:#?}", ptr);
                     return Ok(NonNull::new(slice::from_raw_parts_mut(ptr as *mut u8, self.layout.size())).unwrap());
                 }
             }
@@ -156,25 +193,25 @@ unsafe impl Allocator for SlabAllocator {
     }
 
     unsafe fn deallocate(&self, alloc_ptr: NonNull<u8>, layout: Layout) {
-        // Assert that layouts match
-        assert_eq!(self.layout, layout);
-
-        // Assert pointer is in range
+        debug!("Dealloc {:#?}", alloc_ptr);
+        // Ensure deallocation is valid
         let alloc_ptr = alloc_ptr.as_ptr() as *const u8;
         assert!(alloc_ptr >= self.buffer_ptr());
         assert!(alloc_ptr < self.end());
+        assert_eq!(self.layout, layout);
 
         // Calculate index of byte and bit in bitmap
         let offset = alloc_ptr.sub_ptr(self.buffer_ptr());
-        let byte_idx = offset / self.layout.size();
-        let free_bit = offset % self.layout.size();
+        let index = offset / self.layout.size();
+        let byte_idx = index / 8;
+        let bit_idx = index % 8;
 
-        // Assert that the index is valid
+        // Ensure the index is invalid
         let bitmap = self.bitmap();
         assert!(byte_idx < bitmap.len());
 
         // Zero out bit in bitmap
-        bitmap[byte_idx] &= !bit_mask(free_bit as u8);
+        bitmap[byte_idx] &= !bit_mask(bit_idx as u8);
 
         // Zero out freed memory
         ptr::write_bytes(alloc_ptr as *mut u8, 0, self.layout.size());
@@ -184,20 +221,42 @@ unsafe impl Allocator for SlabAllocator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{vec, vec::Vec};
+    use std::{boxed::Box, mem, vec, vec::Vec};
 
-    /// Ensures that a single `u64` can be successfully allocated and deallocated
-    #[test]
-    fn main_test() {
-        // Init allocator
-        let storage: Vec<u8> = vec![0; 8 * 8];
-        let layout = Layout::new::<u64>();
+    /// A `SlabAllocator` that uses a `Vec` to store its allocations
+    #[allow(dead_code)]
+    struct VecSlabAlloc {
+        pub slab_allocator: SlabAllocator,
+        pub layout: Layout,
+        pub storage: Vec<u8>,
+    }
+
+    /// Initialize a slab allocator with memory from a `Vec`
+    ///
+    /// Used in other tests
+    fn init_slab_alloc<T>(size: usize) -> VecSlabAlloc {
+        let storage: Vec<u8> = vec![0; size];
+        let layout = Layout::new::<T>();
         let slab_allocator = unsafe {
             SlabAllocator::new(storage.as_ptr(), storage.len(), layout)
                 .expect("Failed to create allocator")
         };
 
-        // Allocate
+        VecSlabAlloc {
+            slab_allocator,
+            layout,
+            storage
+        }
+    }
+
+    /// Ensures that a single `u64` can be manually allocated and deallocated
+    #[test]
+    fn single_manual_allocation() {
+        let alloc = init_slab_alloc::<u64>(8 * mem::size_of::<u64>());
+        let slab_allocator = alloc.slab_allocator;
+        let layout = alloc.layout;
+
+        // Manual allocation
         let allocated = slab_allocator
             .allocate(layout)
             .expect("Failed to allocate");
@@ -216,8 +275,60 @@ mod tests {
         *data = DATA;
         assert_eq!(*data, DATA);
 
-        // Deallocate
+        // Manual deallocation
         unsafe { slab_allocator.deallocate(allocated.cast::<u8>(), layout) };
+
+        // Ensure it is set to 0 when deallocated
         assert_eq!(*data, 0);
+    }
+
+    /// Ensures that a single `f32` can be automatically allocated and deallocated using a `Box`
+    #[test]
+    fn single_auto_allocation() {
+        let alloc = init_slab_alloc::<f32>(8 * mem::size_of::<f32>());
+        let slab_allocator = alloc.slab_allocator;
+
+        // Ensure float allocation works
+        const DATA: f32 = 3.14159;
+        let data = Box::try_new_in(DATA, slab_allocator)
+            .expect("Failed to allocate");
+
+        // Ensure it gets set correctly
+        assert_eq!(*data, DATA);
+    }
+
+    /// Ensures that the entire section of memory owned by the allocator can be used for allocations
+    ///
+    /// Tests this by giving an allocator enough memory to allocate 7 `u16`s and ensures that they can all be allocated.
+    ///
+    /// Also tests that an 8th allocation will fail because there is not enough memory.
+    #[test]
+    fn multiple_auto_allocation() {
+        // Init allocator with space for 7 `u16`s and 1 byte for the bitmap
+        const NUM_ALLOC: usize = 7;
+        let alloc = init_slab_alloc::<u16>((NUM_ALLOC + 1) * mem::size_of::<u16>());
+        let slab_allocator = alloc.slab_allocator;
+
+        // This is inside a block so that the slab_allocator is not deallocated before its own allocations!
+        {
+            // Save allocations in a `Vec` so they are all deallocated at once
+            let mut saved_allocations: Vec<Box<u16, SlabAllocator>> = vec![];
+
+            // Fill allocator
+            for i in 0..NUM_ALLOC {
+                let alloc = Box::try_new_in(i as u16, slab_allocator)
+                    .expect("Failed to allocate");
+                saved_allocations.push(alloc);
+            }
+
+            // Ensure allocations are set correctly
+            for i in 0..NUM_ALLOC {
+                assert_eq!(i as u16, *saved_allocations[i]);
+            }
+
+            // This allocation is expected to fail because there should be no more room for allocations
+            Box::try_new_in(9 as u16, slab_allocator)
+                .expect_err("Should have failed to allocate");
+        }
     }
 }
