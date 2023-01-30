@@ -7,7 +7,6 @@ use std::println as debug;
 /// Error cases when using a [`SlabAllocator`]
 #[derive(Clone, Copy, Debug)]
 pub enum SlabAllocatorError {
-    /// Size is not divisible by 8
     InvalidSize,
 }
 
@@ -34,14 +33,12 @@ impl SlabAllocator {
 
     /// Returns the size of the bitmap in bits
     fn bitmap_num_bits(&self) -> usize {
-        const BYTE_BITS: usize = 8;
-
         // Calculate how many bytes are taken up by the bitmap and its padding
         let num_bits = self.size / self.layout.size();
-        let mut bitmap_size = num_bits / BYTE_BITS;
+        let mut bitmap_size = num_bits / u8::BITS as usize;
 
         // Ensure that all bits are included
-        if num_bits % BYTE_BITS != 0 {
+        if num_bits % u8::BITS as usize != 0 {
             bitmap_size += 1
         }
 
@@ -57,14 +54,12 @@ impl SlabAllocator {
 
     /// Returns the size of the bitmap in bytes
     fn bitmap_size(&self) -> usize {
-        const BYTE_BITS: usize = 8;
-
         // Use previous bitmap size to get the real bitmap size
         let num_bits = self.bitmap_num_bits();
-        let mut bitmap_size = num_bits / BYTE_BITS;
+        let mut bitmap_size = num_bits / u8::BITS as usize;
 
         // Ensure all bits are included
-        if num_bits % BYTE_BITS != 0 {
+        if num_bits % u8::BITS as usize != 0 {
             bitmap_size += 1
         }
 
@@ -123,7 +118,7 @@ impl SlabAllocator {
         slab_allocator.buffer().fill(0);
 
         // Mask bits for memory that is unavailable
-        let available_bits = slab_allocator.bitmap_num_bits() % 8;
+        let available_bits = slab_allocator.bitmap_num_bits() % u8::BITS as usize;
         if available_bits != 0 {
             *slab_allocator.bitmap().last_mut().unwrap() = u8::MAX << available_bits;
         }
@@ -143,7 +138,7 @@ impl SlabAllocator {
 //
 // Panics if `byte` has no zeroed bits.
 fn first_free_bit(mut byte: u8) -> usize {
-    for i in 0..8 {
+    for i in 0..u8::BITS as usize {
         // Return index if the associated bit is zero
         if byte & 0x1 == 0 {
             return i;
@@ -162,7 +157,7 @@ fn first_free_bit(mut byte: u8) -> usize {
 //
 // Panics if `free_bit` is greater than 7.
 fn bit_mask(free_bit: u8) -> u8 {
-    assert!(free_bit < 8);
+    assert!(free_bit < u8::BITS as u8);
     1 << free_bit
 }
 
@@ -189,7 +184,7 @@ unsafe impl Allocator for SlabAllocator {
                 // Get index of first free bit
                 let free_bit = first_free_bit(*bitmap_part);
                 // Get index for free memory location
-                let free_index = i * 8 + free_bit;
+                let free_index = i * u8::BITS as usize + free_bit;
 
                 // Set bitmap to indicate that the memory location is now used
                 *bitmap_part |= bit_mask(free_bit as u8);
@@ -218,8 +213,8 @@ unsafe impl Allocator for SlabAllocator {
         // Calculate index of byte and bit in bitmap
         let offset = alloc_ptr.sub_ptr(self.buffer_ptr());
         let index = offset / self.layout.size();
-        let byte_idx = index / 8;
-        let bit_idx = index % 8;
+        let byte_idx = index / u8::BITS as usize;
+        let bit_idx = index % u8::BITS as usize;
 
         // Ensure the index is invalid
         let bitmap = self.bitmap();
