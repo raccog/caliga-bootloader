@@ -95,6 +95,44 @@ impl SlabAllocator {
         self.storage.add(self.size)
     }
 
+    /// Returns an index to the first free slab with `slab_count` sequential free slabs
+    unsafe fn find_free_slabs(&self, slab_count: usize) -> Option<(usize, usize)> {
+        let mut bitmap_enumerator = self.bitmap().iter().enumerate();
+        if slab_count < u8::BITS as usize {
+            while let Some((byte_idx, bitmap_part)) = bitmap_enumerator.next() {
+                if let Some(bit_idx) = find_free_bits(*bitmap_part, slab_count) {
+                    return Some((byte_idx * u8::BITS as usize + bit_idx, 1));
+                }
+            }
+        } else {
+            while let Some((start_byte_idx, bitmap_part)) = bitmap_enumerator.next() {
+                let leading_zeros = (*bitmap_part).leading_zeros() as usize;
+                if leading_zeros == 0 {
+                    continue;
+                }
+
+                let mut slab_count = slab_count - leading_zeros;
+                while let Some((end_byte_idx, bitmap_part)) = bitmap_enumerator.next() {
+                    if slab_count < u8::BITS as usize {
+                        let trailing_zeros = (*bitmap_part).trailing_zeros() as usize;
+                        if trailing_zeros == 0 {
+                            continue;
+                        }
+                        if trailing_zeros >= slab_count {
+                            return Some((start_byte_idx * u8::BITS as usize + (u8::BITS as usize - leading_zeros), end_byte_idx + 1 - start_byte_idx));
+                        }
+                    } else {
+                        // TODO: Use a bitmap enumerator for this part; byte boundaries are too difficult to deal with
+                        // TODO: Ensure next byte has all free bits
+                        slab_count -= u8::BITS as usize;
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
     /// Initializes a new slab allocator for objects with this `layout`
     ///
     /// # Errors
@@ -128,6 +166,29 @@ impl SlabAllocator {
 
         Ok(slab_allocator)
     }
+}
+
+fn find_free_bits(mut byte: u8, slab_count: usize) -> Option<usize> {
+    assert!(slab_count <= u8::BITS as usize);
+
+    let mut zero_count = 0;
+    for i in 0..u8::BITS as usize {
+        // Return index if the associated bit is zero
+        if byte & 0x1 == 0 {
+            zero_count += 1;
+
+            if zero_count == slab_count {
+                return Some(i + 1 - zero_count);
+            }
+        } else {
+            zero_count = 0;
+        }
+
+        // Check the next bit
+        byte >>= 1;
+    }
+
+    None
 }
 
 // Returns the index of the first free bit in a byte (0-7)
@@ -178,6 +239,13 @@ unsafe impl Allocator for SlabAllocator {
         let bitmap = unsafe {
             self.bitmap()
         };
+        let slab_count = layout.size() / self.layout.size();
+        /*if let Some((free_slab_start, free_slab_bytes)) = unsafe { self.find_free_slabs(slab_count) } {
+            let byte_idx = free_slab_start / u8::BITS as usize;
+            for (i, bitmap_part) in bitmap[byte_idx..byte_idx + free_slab_bytes].iter_mut().enumerate() {
+                // TODO: Use a bitmap enumerator for this part; byte boundaries are too difficult to deal with
+            }
+        }*/
         for (i, bitmap_part) in bitmap.iter_mut().enumerate() {
             // Check if this part of the bitmap contains any free memory
             if *bitmap_part < u8::MAX {
