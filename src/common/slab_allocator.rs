@@ -1,4 +1,4 @@
-use core::{alloc::{Allocator, AllocError, Layout}, ptr::{NonNull, self}, slice};
+use core::{alloc::{Allocator, AllocError, Layout}, fmt::Debug, ptr::{NonNull, self}, slice};
 #[cfg(not(test))]
 use log::debug;
 #[cfg(test)]
@@ -246,6 +246,33 @@ mod tests {
             layout,
             storage
         }
+    }
+
+    /// Ensures that an allocator of the smallest possible size (1 slab) can be used
+    ///
+    /// Ensures that only a single allocation is available for an allocator of this capacity
+    #[test]
+    fn smallest_allocation() {
+        fn smallest_allocation_assert(data: u8, slab_allocator: &SlabAllocator) {
+            let allocated = Box::try_new_in(data, slab_allocator)
+                .expect("Failed to allocate");
+            assert_eq!(*allocated, data);
+
+            Box::try_new_in(!data, slab_allocator)
+                .expect_err("Should have failed to allocate");
+        }
+
+        let alloc = init_slab_alloc::<u8>(2 * mem::size_of::<u8>());
+        let slab_allocator = &alloc.slab_allocator;
+
+        // A single allocation should be available
+        const DATA: u8 = 0xda;
+        smallest_allocation_assert(DATA, slab_allocator);
+
+        // Since the previous allocation was freed, a new one
+        // should be available
+        // A single allocation should be available
+        smallest_allocation_assert(DATA, slab_allocator);
     }
 
     /// Ensures that a single `u64` can be manually allocated and deallocated
