@@ -1,6 +1,6 @@
 # The Caliga Bootloader
 
-I am designing a multi-architecture bootloader to use in my hobby OS projects.
+I am designing a multi-architecture bootloader to use in future OS projects.
 
 Currently working on the bootstrap process for aarch64 and x86_64-UEFI.
 
@@ -45,6 +45,14 @@ If you only want to change the architecture for a single run, use the following 
 
 ``` shell
 RUST_TARGET=x86_64-unknown-uefi make qemu
+```
+
+## Run Tests
+
+Tests (currently including integration and documentation tests) should be easy to run:
+
+``` shell
+make test
 ```
 
 ## Supported Targets
