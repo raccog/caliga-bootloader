@@ -13,6 +13,10 @@ FORCE:
 clean:
 	cargo clean
 
+.PHONY: test
+test:
+	cargo test
+
 # TODO: Add more checks to ensure that this doesn't remove any important files
 .PHONY: distclean
 distclean: clean
