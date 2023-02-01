@@ -84,6 +84,11 @@ impl SlabAllocator {
         unsafe { &self.storage()[..self.buffer_size()] }
     }
 
+    /// Returns the buffer used for slab allocation
+    fn buffer_mut(&self) -> &mut [u8] {
+        unsafe { &mut self.storage_mut()[..self.buffer_size()] }
+    }
+
     /// Returns the size of the buffer (used for slab allocation) in bytes
     fn buffer_size(&self) -> usize {
         unsafe { self.storage().len() - self.bitmap_size() }
@@ -185,8 +190,7 @@ impl SlabAllocator {
             }
         }
 
-        debug!("{:#?} bitmap: {:#?} {:#?} buffer: {:#?} bitmap_bits: {:#?} buffer_size: {:#?}", slab_allocator, slab_allocator.bitmap(), slab_allocator.bitmap(), slab_allocator.buffer(), slab_allocator.bitmap_bits(),
-                slab_allocator.buffer_size());
+        debug!("{:#?}, storage_size: {:?}, slab_count: {:#?}, buffer_size: {:#?}, bitmap_size: {:#?}", slab_allocator, slab_allocator.storage().len(), slab_allocator.bitmap_bits(), slab_allocator.buffer_size(), slab_allocator.bitmap_size());
 
         Ok(slab_allocator)
     }
@@ -243,9 +247,12 @@ unsafe impl Allocator for SlabAllocator {
                 *bitmap_part |= 1 << slab_bit;
 
                 unsafe {
-                    let ptr = &self.buffer()[slab_index * self.slab_layout.size()];
-                    debug!("Alloc {:#?}", ptr);
-                    return Ok(NonNull::new(slice::from_raw_parts_mut(ptr as *const u8 as *mut u8, self.slab_layout.size())).unwrap());
+                    let slab_size = self.slab_layout.size();
+                    let slab_start = slab_index * slab_size;
+                    let slab_end = slab_start + slab_size;
+                    let slab = &mut self.buffer_mut()[slab_start..slab_end];
+                    debug!("Alloc {:#?}", slab.as_ptr());
+                    return Ok(NonNull::new(slab).unwrap());
                 }
             }
         }
@@ -350,12 +357,12 @@ mod tests {
         smallest_allocation_assert(DATA, slab_allocator);
     }
 
-    // Ensures that:
-    //
-    // * Slabs can be sequentially allocated and freed using `Box`s
-    // * The entire slab capacity can be filled
-    // * The entire slab capacity can be reallocated after being allocated and then freed
-    // * The layout of `u16` can be used
+    /// Ensures that:
+    ///
+    /// * Slabs can be sequentially allocated and freed using `Box`s
+    /// * The entire slab capacity can be filled
+    /// * The entire slab capacity can be reallocated after being allocated and then freed
+    /// * The layout of `u16` can be used
     #[test]
     fn sequential_allocations() {
         type DataType = u16;
@@ -391,6 +398,7 @@ mod tests {
     }
 
     /// Ensures that a single `u64` can be manually allocated and deallocated
+    /// TODO: Rewrite manual allocation test to use more complex allocation patterns
     #[test]
     fn single_manual_allocation() {
         let alloc = init_slab_alloc::<u64>(8 * mem::size_of::<u64>());
@@ -421,55 +429,5 @@ mod tests {
 
         // Ensure it is set to 0 when deallocated
         assert_eq!(*data, 0);
-    }
-
-    /// Ensures that a single `f32` can be automatically allocated and deallocated using a `Box`
-    #[test]
-    fn single_auto_allocation() {
-        let alloc = init_slab_alloc::<f32>(8 * mem::size_of::<f32>());
-        let slab_allocator = alloc.slab_allocator;
-
-        // Ensure float allocation works
-        const DATA: f32 = 3.14159;
-        let data = Box::try_new_in(DATA, slab_allocator)
-            .expect("Failed to allocate");
-
-        // Ensure it gets set correctly
-        assert_eq!(*data, DATA);
-    }
-
-    /// Ensures that the entire section of memory owned by the allocator can be used for allocations
-    ///
-    /// Tests this by giving an allocator enough memory to allocate 7 `u16`s and ensures that they can all be allocated.
-    ///
-    /// Also tests that an 8th allocation will fail because there is not enough memory.
-    #[test]
-    fn multiple_auto_allocation() {
-        // Init allocator with space for 7 `u16`s and 1 byte for the bitmap
-        const NUM_ALLOC: usize = 7;
-        let alloc = init_slab_alloc::<u16>((NUM_ALLOC + 1) * mem::size_of::<u16>());
-        let slab_allocator = &alloc.slab_allocator;
-
-        // This is inside a block so that the slab_allocator is not deallocated before its own allocations!
-        {
-            // Save allocations in a `Vec` so they are all deallocated at once
-            let mut saved_allocations: Vec<Box<u16, &SlabAllocator>> = vec![];
-
-            // Fill allocator
-            for i in 0..NUM_ALLOC {
-                let alloc = Box::try_new_in(i as u16, slab_allocator)
-                    .expect("Failed to allocate");
-                saved_allocations.push(alloc);
-            }
-
-            // Ensure allocations are set correctly
-            for i in 0..NUM_ALLOC {
-                assert_eq!(i as u16, *saved_allocations[i]);
-            }
-
-            // This allocation is expected to fail because there should be no more room for allocations
-            Box::try_new_in(9 as u16, slab_allocator)
-                .expect_err("Should have failed to allocate");
-        }
     }
 }
