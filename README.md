@@ -34,7 +34,7 @@ If it's not found, then it will be compiled from scratch. This may fail if you d
 
 ### Switch Target Architecture
 
-If you want to run a different architecture, export it's target triple under the variable `RUST_TARGET`:
+If you want to run a different architecture, export its target triple under the variable `RUST_TARGET`:
 
 ``` shell
 export RUST_TARGET=x86_64-unknown-uefi
