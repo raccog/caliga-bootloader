@@ -1,11 +1,11 @@
-use core::{alloc::{Allocator, AllocError, Layout}, cell::UnsafeCell, fmt::Debug, ptr::{NonNull, self}, slice};
+use core::{alloc::{Allocator, AllocError, Layout}, cell::UnsafeCell, fmt::Debug, ptr::{NonNull, self}};
 #[cfg(not(test))]
 use log::debug;
 #[cfg(test)]
 use std::println as debug;
 
 /// Error cases when using a [`SlabAllocator`]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SlabAllocatorError {
     /// The backed storage was not aligned properly
     InvalidAlignment,
@@ -14,6 +14,7 @@ pub enum SlabAllocatorError {
     InvalidSize,
 }
 
+// TODO: See if `slab_layout` can be implemented as a constant generic argument?
 /// A slab allocator can allocate evenly distributed memory chunks of the same size; called "slabs"
 ///
 /// Each slab has the same [`Layout`].
@@ -246,14 +247,12 @@ unsafe impl Allocator for SlabAllocator {
                 // Set bitmap to indicate that the memory location is now used
                 *bitmap_part |= 1 << slab_bit;
 
-                unsafe {
-                    let slab_size = self.slab_layout.size();
-                    let slab_start = slab_index * slab_size;
-                    let slab_end = slab_start + slab_size;
-                    let slab = &mut self.buffer_mut()[slab_start..slab_end];
-                    debug!("Alloc {:#?}", slab.as_ptr());
-                    return Ok(NonNull::new(slab).unwrap());
-                }
+                let slab_size = self.slab_layout.size();
+                let slab_start = slab_index * slab_size;
+                let slab_end = slab_start + slab_size;
+                let slab = &mut self.buffer_mut()[slab_start..slab_end];
+                debug!("Alloc {:#?}", slab.as_ptr());
+                return Ok(NonNull::new(slab).unwrap());
             }
         }
 
@@ -271,7 +270,8 @@ unsafe impl Allocator for SlabAllocator {
         debug!("Dealloc {:#?}", alloc_ptr);
 
         // Ensure deallocation is valid
-        // TODO: Determine if something other than assertions should be used
+        // TODO: Remove assertions; they could be used to accidentally or maliciously
+        //       crash the entire bootloader/kernel by using invalid deallocations
         let alloc_ptr = alloc_ptr.as_ptr() as *const u8;
         assert!(alloc_ptr >= self.buffer().as_ptr());
         assert!(alloc_ptr < self.bitmap().as_ptr());
@@ -295,10 +295,12 @@ unsafe impl Allocator for SlabAllocator {
     }
 }
 
+// TODO: Add test for a `Layout` that has a size different from its alignment
+// TODO: Add test for a `Layout` that is larger than `u64`
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{boxed::Box, mem, vec, vec::Vec};
+    use std::{boxed::Box, collections::VecDeque, mem, vec, vec::Vec};
 
     /// A `SlabAllocator` that uses a `Vec` to store its allocations
     #[allow(dead_code)]
@@ -397,11 +399,91 @@ mod tests {
         alloc_assert(slab_allocator);
     }
 
-    /// Ensures that a single `u64` can be manually allocated and deallocated
-    /// TODO: Rewrite manual allocation test to use more complex allocation patterns
+    /// Ensures that
+    ///
+    /// * Slabs can be non-sequentially allocated and freed using `Box`s
+    /// * The entire slab capacity can be filled
+    /// * The entire slab capacity can be reallocated after being allocated and then freed
+    /// * The layout of `u32` can be used
     #[test]
-    fn single_manual_allocation() {
-        let alloc = init_slab_alloc::<u64>(8 * mem::size_of::<u64>());
+    fn complex_allocations() {
+        type DataType = u32;
+        const SLAB_COUNT: usize = 7;
+        fn alloc_assert(slab_allocator: &SlabAllocator) {
+            // Save allocations in a `Vec` so they are all deallocated at once
+            let mut saved_allocations: VecDeque<Box<DataType, &SlabAllocator>> = VecDeque::new();
+
+            // Make all allocations
+            for i in 0..SLAB_COUNT {
+                let alloc = Box::try_new_in(i as DataType, slab_allocator)
+                    .expect("Failed to allocate");
+                saved_allocations.push_back(alloc);
+            }
+
+            // Ensure allocations are set correctly
+            for i in 0..SLAB_COUNT {
+                assert_eq!(i as DataType, *saved_allocations[i]);
+            }
+
+            // Free even-indexed slabs
+            for i in (0..SLAB_COUNT).step_by(2).rev() {
+                saved_allocations.remove(i);
+            }
+
+            // Re-allocate
+            for i in 0..SLAB_COUNT / 2 + 1 {
+                let alloc = Box::try_new_in(i as DataType, slab_allocator)
+                    .expect("Failed to allocate");
+                saved_allocations.push_back(alloc);
+            }
+
+            // Allocator should be full
+            Box::try_new_in(0xff, slab_allocator)
+                .expect_err("Should have failed to allocate");
+
+            // Free odd-indexed slabs
+            for i in (1..SLAB_COUNT).step_by(2).rev() {
+                saved_allocations.remove(i);
+            }
+
+            // Re-allocate
+            for i in 0..SLAB_COUNT / 2 {
+                let alloc = Box::try_new_in(i as DataType, slab_allocator)
+                    .expect("Failed to allocate");
+                saved_allocations.push_back(alloc);
+            }
+
+            // Allocator should be full
+            Box::try_new_in(0xff, slab_allocator)
+                .expect_err("Should have failed to allocate");
+
+            // Free first half
+            for _ in 0..SLAB_COUNT / 2 {
+                saved_allocations.pop_front().unwrap();
+            }
+
+            // Free other half
+            for _ in 0..saved_allocations.len() {
+                saved_allocations.pop_front().unwrap();
+            }
+        }
+        let alloc = init_slab_alloc::<DataType>((SLAB_COUNT + 1) * mem::size_of::<DataType>());
+        let slab_allocator = &alloc.slab_allocator;
+
+        // This is called twice to see if further allocations are successful after being freed
+        alloc_assert(slab_allocator);
+        alloc_assert(slab_allocator);
+    }
+
+    /// Ensures that:
+    ///
+    /// * A manual allocation returns a working pointer
+    /// * After being freed, the deallocated memory is zeroed out
+    /// * The layout of `u64` can be used
+    #[test]
+    fn manual_allocation() {
+        type DataType = u64;
+        let alloc = init_slab_alloc::<DataType>(8 * mem::size_of::<DataType>());
         let slab_allocator = alloc.slab_allocator;
         let layout = alloc.layout;
 
@@ -411,16 +493,16 @@ mod tests {
             .expect("Failed to allocate");
         let data = unsafe {
             allocated
-                .cast::<u64>()
+                .cast::<DataType>()
                 .as_mut()
         };
 
         // Ensure it's initialized as 0
-        const ZERO: u64 = 0;
+        const ZERO: DataType = 0;
         assert_eq!(*data, ZERO);
 
         // Ensure it gets set correctly
-        const DATA: u64 = 0xdeadbeef;
+        const DATA: DataType = 0xdeadbeef;
         *data = DATA;
         assert_eq!(*data, DATA);
 
@@ -429,5 +511,60 @@ mod tests {
 
         // Ensure it is set to 0 when deallocated
         assert_eq!(*data, 0);
+    }
+
+    /// Ensures that proper errors are returned for:
+    ///
+    /// * An invalid size
+    /// * Incorrectly aligned memory
+    #[test]
+    fn invalid_layouts() {
+        type DataType = u64;
+        const NUM_SLABS: usize = 8;
+        const LAYOUT: Layout = Layout::new::<DataType>();
+
+        // Using a size that is not divisible by the slab size should cause an error
+        let size = NUM_SLABS * mem::size_of::<DataType>() + 1;
+        let mut storage: Vec<u8> = vec![0; size];
+        let alloc_err = unsafe {
+            SlabAllocator::new(&mut storage[..], LAYOUT)
+                .expect_err("Should have failed to create allocator")
+        };
+        assert_eq!(alloc_err, SlabAllocatorError::InvalidSize);
+
+        // Using a size that is too small should cause an error
+        let size = 1;
+        let mut storage: Vec<u8> = vec![0; size];
+        let alloc_err = unsafe {
+            SlabAllocator::new(&mut storage[..], LAYOUT)
+                .expect_err("Should have failed to create allocator")
+        };
+        assert_eq!(alloc_err, SlabAllocatorError::InvalidSize);
+
+        // Using an invalid alignment should cause an error
+        let size = NUM_SLABS * mem::size_of::<DataType>() + 1;
+        let mut storage: Vec<u8> = vec![0; size];
+        let alloc_err = unsafe {
+            SlabAllocator::new(&mut storage[1..], LAYOUT)
+                .expect_err("Should have failed to create allocator")
+        };
+        assert_eq!(alloc_err, SlabAllocatorError::InvalidAlignment);
+    }
+
+    /// Ensures that proper errors are returned for:
+    ///
+    /// * Using an invalid `Layout` for an allocation
+    #[test]
+    fn invalid_allocation() {
+        type DataType = u8;
+        const SLAB_COUNT: usize = 8;
+
+        let alloc = init_slab_alloc::<DataType>(SLAB_COUNT * mem::size_of::<DataType>());
+        let slab_allocator = &alloc.slab_allocator;
+
+        // Using a layout that doesn't match the slab allocator should cause an error,
+        // such as allocating a float (align 4) with a u8 allocator (align 1)
+        Box::try_new_in(3.14159, slab_allocator)
+            .expect_err("Should have failed to allocate");
     }
 }
