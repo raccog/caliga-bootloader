@@ -222,12 +222,9 @@ fn first_free_bit(mut byte: u8) -> usize {
 }
 
 unsafe impl Allocator for SlabAllocator {
-    // Returns `AllocError` if:
+    // Returns [`AllocError`] if:
     //
-    // * `layout.align()` does not match this slab allocator's alignment
-    // * There is no memory block large enough to allocate `layout.size()` sequential bytes
-    //
-    // NOTE: This currently will suffer from some memory fragmentation unless all allocations are the same size
+    // * `layout` does not match this slab allocator's slab layout; `(layout != self.slab_layout)`
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         // Return error if `layout` does not match `self.slab_layout`
         if self.slab_layout != layout {
@@ -257,6 +254,12 @@ unsafe impl Allocator for SlabAllocator {
         return Err(AllocError);
     }
 
+    // # Safety
+    //
+    // This function has certain constraints around its inputs that need to be followed:
+    //
+    // * `alloc_ptr` needs to point to a valid slab contained in this allocator's buffer
+    // * `layout` needs to match this slab allocator's slab layout
     unsafe fn deallocate(&self, alloc_ptr: NonNull<u8>, layout: Layout) {
         debug!("Dealloc {:#?}", alloc_ptr);
 
