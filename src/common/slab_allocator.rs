@@ -1,4 +1,4 @@
-use core::{alloc::{Allocator, AllocError, Layout}, fmt::Debug, ptr::{NonNull, self}, slice};
+use core::{alloc::{Allocator, AllocError, Layout}, cell::UnsafeCell, fmt::Debug, ptr::{NonNull, self}, slice};
 #[cfg(not(test))]
 use log::debug;
 #[cfg(test)]
@@ -7,49 +7,71 @@ use std::println as debug;
 /// Error cases when using a [`SlabAllocator`]
 #[derive(Clone, Copy, Debug)]
 pub enum SlabAllocatorError {
+    /// The backed storage was not aligned properly
+    InvalidAlignment,
+    /// The backed storage was either too small, or did not have a size divisible by the size
+    /// of a single slab
     InvalidSize,
 }
 
-/// An allocator that can allocate evenly distributed chunks of the same size
+/// A slab allocator can allocate evenly distributed memory chunks of the same size; called "slabs"
 ///
-/// Each chunk of memory in this allocator has the same [`Layout`];
-#[derive(Clone, Copy, Debug)]
+/// Each slab has the same [`Layout`].
+///
+/// # Constraints
+///
+/// This allocator can be backed by raw memory, so it can be used even in situations where there
+/// is no existing allocator. Thus, this can be used as the first allocator to bootstrap a second
+/// allocator.
+///
+/// See [`SlabAllocator::new`] for an example of initializing this allocator using raw memory.
+#[derive(Debug)]
 pub struct SlabAllocator {
-    storage: *const u8,
-    size: usize,
+    // NOTE: This is `NonNull` instead of just a reference so that there are no lifetime
+    // annotations in this struct.
+    // NOTE: This is `UnsafeCell` so that `self.allocate()` can get a mutable reference to
+    // its contents without having a `&mut self`.
+    allocated_storage: NonNull<UnsafeCell<[u8]>>,
     slab_layout: Layout,
 }
 
+// Since it uses interior mutability without any locking mechanism, this slab allocator should
+// not be shared between multiple threads
+impl !Send for SlabAllocator {}
+impl !Sync for SlabAllocator {}
+
 impl SlabAllocator {
-    /// Returns the bitmap
-    unsafe fn bitmap(&self) -> &mut [u8] {
-        slice::from_raw_parts_mut(self.bitmap_ptr() as *mut u8, self.bitmap_size())
+    /// Returns the bitmap used for keeping track of free slabs
+    fn bitmap(&self) -> &[u8] {
+        unsafe { &self.storage()[self.buffer_size()..] }
     }
+
+    /// Returns the mutable bitmap used for keeping track of free slabs
+    fn bitmap_mut(&self) -> &mut [u8] {
+        unsafe { &mut self.storage_mut()[self.buffer_size()..] }
+     }
 
     /// Returns the number of usable bits in the bitmap
     ///
     /// Each usable bit corresponds to a single slab in the buffer. Unusable bits do not have any
-    /// corresponding slab and cannot be used for allocation.
+    /// corresponding slab in the buffer and cannot be used for allocation.
     ///
-    /// NOTE: All bits after the last usable bit should be marked with a `1`; signifying
-    /// that the corresponding slab is unusable.
+    /// All bits after the last usable bit are marked with a `1` on initialization; signifying
+    /// that they have no corresponding usable slab
     fn bitmap_bits(&self) -> usize {
         self.buffer_size() / self.slab_layout.size()
     }
 
-    /// Returns a pointer to the bitmap
-    unsafe fn bitmap_ptr(&self) -> *const u8 {
-        self.storage.add(self.buffer_size())
-    }
-
     /// Returns the size of the bitmap in bytes
+    ///
+    /// This calculation includes any unusable bits
     fn bitmap_size(&self) -> usize {
-        // This calculation includes the unusable slabs taken up by the bitmap
-        let slab_count = self.size / self.slab_layout.size();
+        let slab_count = unsafe { self.storage().len() / self.slab_layout.size() };
 
         const BITS: usize = u8::BITS as usize;
         let bitmap_size = slab_count / BITS;
 
+        // Ensure all bits are counted
         if slab_count % BITS != 0 {
             bitmap_size + 1
         } else {
@@ -58,47 +80,87 @@ impl SlabAllocator {
     }
 
     /// Returns the buffer used for slab allocation
-    unsafe fn buffer(&self) -> &mut [u8] {
-        slice::from_raw_parts_mut(self.buffer_ptr() as *mut u8, self.buffer_size())
-    }
-
-    /// Returns a pointer to the buffer used for slab allocation
-    unsafe fn buffer_ptr(&self) -> *const u8 {
-        self.storage
+    fn buffer(&self) -> &[u8] {
+        unsafe { &self.storage()[..self.buffer_size()] }
     }
 
     /// Returns the size of the buffer (used for slab allocation) in bytes
     fn buffer_size(&self) -> usize {
-        self.size - self.bitmap_size()
+        unsafe { self.storage().len() - self.bitmap_size() }
     }
 
-    /// Returns the total capacity of slabs controlled by this allocator
-    fn capacity(&self) -> usize {
+    /// Returns the total number of slabs controlled by this allocator
+    pub fn capacity(&self) -> usize {
         self.buffer_size() / self.slab_layout.size()
     }
 
-    /// Initializes a new slab allocator with each slab having the same `slab_layout`
+    /// Initializes a new slab allocator backed by `storage`, with each slab having the same `slab_layout`
     ///
     /// # Errors
     ///
-    /// Returns [`SlabAllocatorError::InvalidSize`] if:
+    /// [`SlabAllocatorError::InvalidSize`]:
     ///
-    /// * `size` is not divisible by `slab_layout.size()`
-    /// * `size` is not large enough to store two slabs of size `slab_layout.size()`
-    /// * `storage` is null
+    /// * `storage.len()` is not divisible by `slab_layout.size()`; `(storage.len() % slab_layout.size() != 0)`
+    /// * `storage.len()` is not large enough to store two slabs of size `slab_layout.size()`;
+    ///   `(storage.len() < slab_layout.size() * 2)`
+    ///
+    /// [`SlabAllocatorError::InvalidAlignment`]:
+    ///
     /// * `storage` is not aligned to `slab_layout.align()`
-    pub unsafe fn new(storage: *const u8, size: usize, slab_layout: Layout) -> Result<SlabAllocator, SlabAllocatorError> {
+    ///
+    /// # Examples
+    ///
+    /// There are two examples:
+    ///
+    /// * Initialize this allocator with raw memory
+    /// * Initialize this allocator with memory retrieved from another allocator
+    ///
+    /// ## Raw Memory
+    ///
+    /// ```
+    /// # use std::{alloc::Layout, slice, vec};
+    /// # use caliga_bootloader::common::slab_allocator::SlabAllocator;
+    /// const MEMORY_SIZE: usize = 0x1000;
+    /// # let memory = vec![0; MEMORY_SIZE];
+    /// // This raw pointer could come from anywhere
+    /// let raw_ptr: *const u8 = memory.as_ptr() as *const u8;
+    /// let slab_allocator = unsafe {
+    ///     let memory_slice: &mut [u8] = slice::from_raw_parts_mut(raw_ptr as *mut u8, MEMORY_SIZE);
+    ///     SlabAllocator::new(memory_slice, Layout::new::<u8>())
+    ///         .expect("Failed to initialize slab allocator")
+    /// };
+    /// ```
+    ///
+    /// ## Allocator-Backed Memory
+    ///
+    /// ```
+    /// # use std::{alloc::Layout, vec, vec::Vec};
+    /// # use caliga_bootloader::common::slab_allocator::SlabAllocator;
+    /// const MEMORY_SIZE: usize = 0x1000;
+    /// // This memory is allocated using another already-existing allocator
+    /// let mut backed_memory: Vec<u8> = vec![0; MEMORY_SIZE];
+    /// let slab_allocator = unsafe {
+    ///     SlabAllocator::new(&mut backed_memory[..], Layout::new::<u8>())
+    ///         .expect("Failed to initialize slab allocator")
+    /// };
+    /// ```
+    pub unsafe fn new(storage: &mut [u8], slab_layout: Layout) -> Result<SlabAllocator, SlabAllocatorError> {
         let layout_size = slab_layout.size();
-        if size % layout_size != 0 || size < layout_size * 2 || storage.is_null() || !storage.is_aligned_to(slab_layout.align()) {
+        let size = storage.len();
+        if size % layout_size != 0 || size < layout_size * 2 {
             return Err(SlabAllocatorError::InvalidSize);
         }
 
-        let slab_allocator = SlabAllocator {
-            storage, size, slab_layout
-        };
+        if !storage.as_ptr().is_aligned_to(slab_layout.align()) {
+            return Err(SlabAllocatorError::InvalidAlignment);
+        }
 
-        slab_allocator.bitmap().fill(0);
-        slab_allocator.buffer().fill(0);
+        // Zero out memory
+        storage.fill(0);
+
+        let slab_allocator = SlabAllocator {
+            allocated_storage: NonNull::new(storage as *mut [u8] as *mut UnsafeCell<[u8]>).unwrap(), slab_layout
+        };
 
         // Mask bits for memory that is unavailable
         // These masked bits are marked with `1`, showing the allocator that their corresponding
@@ -107,7 +169,7 @@ impl SlabAllocator {
         let unmasked_bits_count = slab_allocator.bitmap_bits() % u8::BITS as usize;
         let masked_bytes_start = slab_count / u8::BITS as usize;
         const U8_MAX: u8 = u8::MAX;
-        let bitmap = slab_allocator.bitmap();
+        let bitmap = slab_allocator.bitmap_mut();
 
         if unmasked_bits_count != 0 {
             // Mask the first partially-unusable byte of the bitmap
@@ -123,10 +185,18 @@ impl SlabAllocator {
             }
         }
 
-        debug!("{:#?} bitmap: {:#?} {:#?} buffer: {:#?} bitmap_bits: {:#?} buffer_size: {:#?}", slab_allocator, slab_allocator.bitmap_ptr(), slab_allocator.bitmap(), slab_allocator.buffer_ptr(), slab_allocator.bitmap_bits(),
+        debug!("{:#?} bitmap: {:#?} {:#?} buffer: {:#?} bitmap_bits: {:#?} buffer_size: {:#?}", slab_allocator, slab_allocator.bitmap(), slab_allocator.bitmap(), slab_allocator.buffer(), slab_allocator.bitmap_bits(),
                 slab_allocator.buffer_size());
 
         Ok(slab_allocator)
+    }
+
+    unsafe fn storage(&self) -> &[u8] {
+        &*self.allocated_storage.as_ref().get()
+    }
+
+    unsafe fn storage_mut(&self) -> &mut [u8] {
+        &mut *self.allocated_storage.as_ref().get()
     }
 }
 
@@ -164,9 +234,7 @@ unsafe impl Allocator for SlabAllocator {
             return Err(AllocError);
         }
 
-        let bitmap = unsafe {
-            self.bitmap()
-        };
+        let bitmap = self.bitmap_mut();
         // Search each byte of the bitmap to find a free slab
         // NOTE: Free slabs are denoted by a `0` in the bitmap.
         for (i, bitmap_part) in bitmap.iter_mut().enumerate() {
@@ -178,9 +246,9 @@ unsafe impl Allocator for SlabAllocator {
                 *bitmap_part |= 1 << slab_bit;
 
                 unsafe {
-                    let ptr = self.buffer_ptr().add(slab_index * self.slab_layout.size());
+                    let ptr = &self.buffer()[slab_index * self.slab_layout.size()];
                     debug!("Alloc {:#?}", ptr);
-                    return Ok(NonNull::new(slice::from_raw_parts_mut(ptr as *mut u8, self.slab_layout.size())).unwrap());
+                    return Ok(NonNull::new(slice::from_raw_parts_mut(ptr as *const u8 as *mut u8, self.slab_layout.size())).unwrap());
                 }
             }
         }
@@ -195,18 +263,18 @@ unsafe impl Allocator for SlabAllocator {
         // Ensure deallocation is valid
         // TODO: Determine if something other than assertions should be used
         let alloc_ptr = alloc_ptr.as_ptr() as *const u8;
-        assert!(alloc_ptr >= self.buffer_ptr());
-        assert!(alloc_ptr < self.bitmap_ptr());
+        assert!(alloc_ptr >= self.buffer().as_ptr());
+        assert!(alloc_ptr < self.bitmap().as_ptr());
         assert_eq!(self.slab_layout, layout);
 
         // Calculate indices for the bit that corresponds to this memory location
-        let offset = alloc_ptr.sub_ptr(self.buffer_ptr());
+        let offset = alloc_ptr.sub_ptr(self.buffer().as_ptr());
         let slab_index = offset / self.slab_layout.size();
         let byte_idx = slab_index / u8::BITS as usize;
         let bit_idx = slab_index % u8::BITS as usize;
 
         // Ensure the index is valid
-        let bitmap = self.bitmap();
+        let bitmap = self.bitmap_mut();
         assert!(byte_idx < bitmap.len());
 
         // Zero out bit in bitmap
@@ -234,10 +302,10 @@ mod tests {
     ///
     /// Used in other tests
     fn init_slab_alloc<T>(size: usize) -> VecSlabAlloc {
-        let storage: Vec<u8> = vec![0; size];
+        let mut storage: Vec<u8> = vec![0; size];
         let layout = Layout::new::<T>();
         let slab_allocator = unsafe {
-            SlabAllocator::new(storage.as_ptr(), storage.len(), layout)
+            SlabAllocator::new(&mut storage[..], layout)
                 .expect("Failed to create allocator")
         };
 
@@ -248,12 +316,16 @@ mod tests {
         }
     }
 
-    /// Ensures that an allocator of the smallest possible size (1 slab) can be used
+    /// Ensures that:
     ///
-    /// Ensures that only a single allocation is available for an allocator of this capacity
+    /// * An allocator of the smallest possible size (1 slab where each slab is 1 byte) can be used
+    /// * A single slab can be allocated
+    /// * A single slab can be reallocated after being allocated and then freed
+    /// * The layout of `u8` can be used
     #[test]
     fn smallest_allocation() {
-        fn smallest_allocation_assert(data: u8, slab_allocator: &SlabAllocator) {
+        type DataType = u8;
+        fn smallest_allocation_assert(data: DataType, slab_allocator: &SlabAllocator) {
             let allocated = Box::try_new_in(data, slab_allocator)
                 .expect("Failed to allocate");
             assert_eq!(*allocated, data);
@@ -262,17 +334,57 @@ mod tests {
                 .expect_err("Should have failed to allocate");
         }
 
-        let alloc = init_slab_alloc::<u8>(2 * mem::size_of::<u8>());
+        let alloc = init_slab_alloc::<DataType>(2 * mem::size_of::<DataType>());
         let slab_allocator = &alloc.slab_allocator;
 
         // A single allocation should be available
-        const DATA: u8 = 0xda;
+        const DATA: DataType = 0xda;
         smallest_allocation_assert(DATA, slab_allocator);
 
         // Since the previous allocation was freed, a new one
         // should be available
         // A single allocation should be available
         smallest_allocation_assert(DATA, slab_allocator);
+    }
+
+    // Ensures that:
+    //
+    // * Slabs can be sequentially allocated and freed using `Box`s
+    // * The entire slab capacity can be filled
+    // * The entire slab capacity can be reallocated after being allocated and then freed
+    // * The layout of `u16` can be used
+    #[test]
+    fn sequential_allocations() {
+        type DataType = u16;
+        fn alloc_assert(slab_allocator: &SlabAllocator) {
+            // Save allocations in a `Vec` so they are all deallocated at once
+            let mut saved_allocations: Vec<Box<DataType, &SlabAllocator>> = vec![];
+            let capacity = slab_allocator.capacity();
+
+            // Fill allocator
+            for i in 0..capacity {
+                let alloc = Box::try_new_in(i as DataType, slab_allocator)
+                    .expect("Failed to allocate");
+                saved_allocations.push(alloc);
+            }
+
+            // Ensure allocations are set correctly
+            for i in 0..capacity {
+                assert_eq!(i as DataType, *saved_allocations[i]);
+            }
+
+            // This allocation is expected to fail because there should be no more room for allocations
+            Box::try_new_in(capacity as DataType, slab_allocator)
+                .expect_err("Should have failed to allocate");
+        }
+
+        const SLAB_COUNT: usize = 100;
+        let alloc = init_slab_alloc::<DataType>(SLAB_COUNT * mem::size_of::<DataType>());
+        let slab_allocator = &alloc.slab_allocator;
+
+        // This is called twice to see if further allocations are successful after being freed
+        alloc_assert(slab_allocator);
+        alloc_assert(slab_allocator);
     }
 
     /// Ensures that a single `u64` can be manually allocated and deallocated
@@ -333,12 +445,12 @@ mod tests {
         // Init allocator with space for 7 `u16`s and 1 byte for the bitmap
         const NUM_ALLOC: usize = 7;
         let alloc = init_slab_alloc::<u16>((NUM_ALLOC + 1) * mem::size_of::<u16>());
-        let slab_allocator = alloc.slab_allocator;
+        let slab_allocator = &alloc.slab_allocator;
 
         // This is inside a block so that the slab_allocator is not deallocated before its own allocations!
         {
             // Save allocations in a `Vec` so they are all deallocated at once
-            let mut saved_allocations: Vec<Box<u16, SlabAllocator>> = vec![];
+            let mut saved_allocations: Vec<Box<u16, &SlabAllocator>> = vec![];
 
             // Fill allocator
             for i in 0..NUM_ALLOC {
