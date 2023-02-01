@@ -1,6 +1,6 @@
 /// This implementation is a shortened version of the RedoxOS implementation found here:
 ///
-/// https://gitlab.redox-os.org/redox-os/syscall/-/blob/master/src/io/io.rs
+/// <https://gitlab.redox-os.org/redox-os/syscall/-/blob/master/src/io/io.rs>
 
 pub trait Io {
     type Value: Copy + PartialEq;
