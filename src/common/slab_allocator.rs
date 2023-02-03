@@ -15,6 +15,7 @@ pub enum SlabAllocatorError {
 }
 
 // TODO: See if `slab_layout` can be implemented as a constant generic argument?
+// TODO: See what can be done to ensure that the allocator is not freed before its slabs are freed
 /// A slab allocator can allocate evenly distributed memory chunks of the same size; called "slabs"
 ///
 /// Each slab has the same [`Layout`].
