@@ -1,79 +1,88 @@
+//! Slab allocator implementation.
+
 use core::{alloc::{Allocator, AllocError, Layout}, cell::UnsafeCell, fmt::Debug, ptr::{NonNull, self}};
 #[cfg(not(test))]
 use log::debug;
 #[cfg(test)]
 use std::println as debug;
 
-/// Error cases when using a [`SlabAllocator`]
+/// The error type returned when initializing a [`SlabAllocator`].
+///
+/// See [`SlabAllocator::new`] for more details on how to initialize a [`SlabAllocator`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SlabAllocatorError {
-    /// The backed storage was not aligned properly
+    /// The storage has a different alignment than the allocator.
     InvalidAlignment,
-    /// The backed storage was either too small, or did not have a size divisible by the size
-    /// of a single slab
-    InvalidSize,
+    /// The allocator's storage was too small to contain a bitmap and a single slab.
+    StorageTooSmall,
+    /// The storage could not be divided into slabs; the storage's size should be divisible by
+    /// the size of a single slab without any remainder.
+    NonDivisibleSize,
 }
 
 // TODO: See if `slab_layout` can be implemented as a constant generic argument?
-// TODO: See what can be done to ensure that the allocator is not freed before its slabs are freed
-/// A slab allocator can allocate evenly distributed memory chunks of the same size; called "slabs"
+// TODO: See what can be done to ensure that the allocator is not freed before its slabs are freed.
+/// A slab allocator can allocate evenly distributed memory chunks of the same size; called "slabs".
 ///
-/// Each slab has the same [`Layout`].
+/// Each slab has the same [`Layout`] (meaning alignment and size).
 ///
 /// # Constraints
 ///
 /// This allocator can be backed by raw memory, so it can be used even in situations where there
-/// is no existing allocator. Thus, this can be used as the first allocator to bootstrap a second
+/// is no existing allocator. Thus, it can be used as the first allocator to bootstrap a second
 /// allocator.
 ///
 /// See [`SlabAllocator::new`] for an example of initializing this allocator using raw memory.
 #[derive(Debug)]
 pub struct SlabAllocator {
-    // NOTE: This is `NonNull` instead of just a reference so that there are no lifetime
-    // annotations in this struct.
-    // NOTE: This is `UnsafeCell` so that `self.allocate()` can get a mutable reference to
-    // its contents without having a `&mut self`.
+    // `UnsafeCell<[u8]>` is used instead of `[u8]` so that `SlabAllocator::allocate()` can get
+    // a mutable reference to the bitmap and allocation slabs. Without `UnsafeCell`,
+    // `SlabAllocator::allocate()` would not be able to mutate its own storage because it does
+    // not have a mutable reference to itself (`&mut self`).
+    //
+    // `NonNull<UnsafeCell>` is used instead of `&UnsafeCell` so that this allocator does not
+    // need any lifetime annotations.
     allocated_storage: NonNull<UnsafeCell<[u8]>>,
     slab_layout: Layout,
 }
 
 // Since it uses interior mutability without any locking mechanism, this slab allocator should
-// not be shared between multiple threads
+// not be shared between multiple threads.
 impl !Send for SlabAllocator {}
 impl !Sync for SlabAllocator {}
 
 impl SlabAllocator {
-    /// Returns the bitmap used for keeping track of free slabs
+    /// Returns the bitmap used for keeping track of free slabs.
     fn bitmap(&self) -> &[u8] {
         unsafe { &self.storage()[self.buffer_size()..] }
     }
 
-    /// Returns the mutable bitmap used for keeping track of free slabs
+    /// Returns the mutable bitmap used for keeping track of free slabs.
     fn bitmap_mut(&self) -> &mut [u8] {
         unsafe { &mut self.storage_mut()[self.buffer_size()..] }
      }
 
-    /// Returns the number of usable bits in the bitmap
+    /// Returns the number of usable bits in the bitmap.
     ///
-    /// Each usable bit corresponds to a single slab in the buffer. Unusable bits do not have any
-    /// corresponding slab in the buffer and cannot be used for allocation.
+    /// Each usable bit corresponds to a single slab in the allocator's buffer. Unusable bits
+    /// do not have any corresponding slab in the buffer and cannot be used for allocation.
     ///
     /// All bits after the last usable bit are marked with a `1` on initialization; signifying
-    /// that they have no corresponding usable slab
+    /// that they have no corresponding usable slab.
     fn bitmap_bits(&self) -> usize {
         self.buffer_size() / self.slab_layout.size()
     }
 
-    /// Returns the size of the bitmap in bytes
+    /// Returns the size of the bitmap in bytes.
     ///
-    /// This calculation includes any unusable bits
+    /// This calculation includes any unusable bits.
     fn bitmap_size(&self) -> usize {
         let slab_count = unsafe { self.storage().len() / self.slab_layout.size() };
 
         const BITS: usize = u8::BITS as usize;
         let bitmap_size = slab_count / BITS;
-
-        // Ensure all bits are counted
+        // If the slab count is not divisible by `8` without a remainder, then an extra byte is added
+        // to the bitmap's size to account for the remaining bits.
         if slab_count % BITS != 0 {
             bitmap_size + 1
         } else {
@@ -81,27 +90,27 @@ impl SlabAllocator {
         }
     }
 
-    /// Returns the buffer used for slab allocation
+    /// Returns the buffer used for slab allocation.
     fn buffer(&self) -> &[u8] {
         unsafe { &self.storage()[..self.buffer_size()] }
     }
 
-    /// Returns the buffer used for slab allocation
+    /// Returns the mutable buffer used for slab allocation.
     fn buffer_mut(&self) -> &mut [u8] {
         unsafe { &mut self.storage_mut()[..self.buffer_size()] }
     }
 
-    /// Returns the size of the buffer (used for slab allocation) in bytes
+    /// Returns the size of the allocator's slab buffer in bytes.
     fn buffer_size(&self) -> usize {
         unsafe { self.storage().len() - self.bitmap_size() }
     }
 
-    /// Returns the total number of slabs controlled by this allocator
+    /// Returns the total number of slabs controlled by this allocator.
     pub fn capacity(&self) -> usize {
         self.buffer_size() / self.slab_layout.size()
     }
 
-    /// Initializes a new slab allocator backed by `storage`, with each slab having the same `slab_layout`
+    /// Initializes a new slab allocator backed by `storage`, with each slab having the same `slab_layout`.
     ///
     /// # Errors
     ///
@@ -123,6 +132,8 @@ impl SlabAllocator {
     /// * Initialize this allocator with memory retrieved from another allocator
     ///
     /// ## Raw Memory
+    ///
+    /// Raw memory can be used when there is no currently avaible allocator.
     ///
     /// ```
     /// # use std::{alloc::Layout, slice, vec};
@@ -153,33 +164,31 @@ impl SlabAllocator {
     /// ```
     pub unsafe fn new(storage: &mut [u8], slab_layout: Layout) -> Result<SlabAllocator, SlabAllocatorError> {
         let layout_size = slab_layout.size();
-        let size = storage.len();
-        if size % layout_size != 0 || size < layout_size * 2 {
-            return Err(SlabAllocatorError::InvalidSize);
+        let storage_size = storage.len();
+        if storage_size < layout_size * 2 {
+            return Err(SlabAllocatorError::StorageTooSmall);
         }
-
+        if storage_size % layout_size != 0 {
+            return Err(SlabAllocatorError::NonDivisibleSize);
+        }
         if !storage.as_ptr().is_aligned_to(slab_layout.align()) {
             return Err(SlabAllocatorError::InvalidAlignment);
         }
 
-        // Zero out memory
         storage.fill(0);
 
         let slab_allocator = SlabAllocator {
             allocated_storage: NonNull::new(storage as *mut [u8] as *mut UnsafeCell<[u8]>).unwrap(), slab_layout
         };
 
-        // Mask bits for memory that is unavailable
-        // These masked bits are marked with `1`, showing the allocator that their corresponding
-        // slabs are unavailable for allocation.
+        const U8_MAX: u8 = u8::MAX;
         let slab_count = slab_allocator.capacity();
         let unmasked_bits_count = slab_allocator.bitmap_bits() % u8::BITS as usize;
         let masked_bytes_start = slab_count / u8::BITS as usize;
-        const U8_MAX: u8 = u8::MAX;
         let bitmap = slab_allocator.bitmap_mut();
 
+        // Mask the first partially-unusable byte of the bitmap
         if unmasked_bits_count != 0 {
-            // Mask the first partially-unusable byte of the bitmap
             // Part of this byte might still have usable bits, so `u8::MAX` needs
             // to be shifted to unset those usable bits.
             *&mut bitmap[masked_bytes_start] = U8_MAX << unmasked_bits_count;
@@ -197,34 +206,15 @@ impl SlabAllocator {
         Ok(slab_allocator)
     }
 
+    /// Returns the allocator's storage. It contains the allocator's slabs and bitmap.
     unsafe fn storage(&self) -> &[u8] {
         &*self.allocated_storage.as_ref().get()
     }
 
+    /// Returns the allocator's mutable storage. It contains the allocator's slabs and bitmap.
     unsafe fn storage_mut(&self) -> &mut [u8] {
         &mut *self.allocated_storage.as_ref().get()
     }
-}
-
-// Returns the index of the first free bit in a byte (0-7)
-//
-// Index 0 is the least significant bit, while 7 is the most significant.
-//
-// # Safety
-//
-// Panics if `byte == u8::MAX`
-fn first_free_bit(mut byte: u8) -> usize {
-    for i in 0..u8::BITS as usize {
-        // Return index if the associated bit is zero
-        if byte & 0x1 == 0 {
-            return i;
-        }
-
-        // Check the next bit
-        byte >>= 1;
-    }
-
-    unimplemented!();
 }
 
 unsafe impl Allocator for SlabAllocator {
@@ -242,7 +232,8 @@ unsafe impl Allocator for SlabAllocator {
         // NOTE: Free slabs are denoted by a `0` in the bitmap.
         for (i, bitmap_part) in bitmap.iter_mut().enumerate() {
             if *bitmap_part < u8::MAX {
-                let slab_bit = first_free_bit(*bitmap_part);
+                let slab_bit = (*bitmap_part).trailing_ones() as usize;
+                assert!(slab_bit < u8::BITS as usize);
                 let slab_index = i * u8::BITS as usize + slab_bit;
 
                 // Set bitmap to indicate that the memory location is now used
@@ -266,7 +257,7 @@ unsafe impl Allocator for SlabAllocator {
     // This function has certain constraints around its inputs that need to be followed:
     //
     // * `alloc_ptr` needs to point to a valid slab contained in this allocator's buffer
-    // * `layout` needs to match this slab allocator's slab layout
+    // * `layout` needs to match this allocator's slab layout
     unsafe fn deallocate(&self, alloc_ptr: NonNull<u8>, layout: Layout) {
         debug!("Dealloc {:#?}", alloc_ptr);
 
@@ -288,14 +279,15 @@ unsafe impl Allocator for SlabAllocator {
         let bitmap = self.bitmap_mut();
         assert!(byte_idx < bitmap.len());
 
-        // Zero out bit in bitmap
+        // Zero out part of bitmap to indicate that the slab is free
         bitmap[byte_idx] &= !(1 << bit_idx);
 
-        // Zero out freed memory
+        // Zero out freed memory so it cannot be leaked
         ptr::write_bytes(alloc_ptr as *mut u8, 0, self.slab_layout.size());
     }
 }
 
+// TODO: Add test for an invalid `storage` slice (such as null address or an invalid address range)
 // TODO: Add test for a `Layout` that has a size different from its alignment
 // TODO: Add test for a `Layout` that is larger than `u64`
 #[cfg(test)]
@@ -311,9 +303,9 @@ mod tests {
         pub storage: Vec<u8>,
     }
 
-    /// Initialize a slab allocator with memory from a `Vec`
+    /// Initialize a slab allocator using memory from a `Vec`
     ///
-    /// Used in other tests
+    /// Only used in other tests
     fn init_slab_alloc<T>(size: usize) -> VecSlabAlloc {
         let mut storage: Vec<u8> = vec![0; size];
         let layout = Layout::new::<T>();
@@ -531,7 +523,7 @@ mod tests {
             SlabAllocator::new(&mut storage[..], LAYOUT)
                 .expect_err("Should have failed to create allocator")
         };
-        assert_eq!(alloc_err, SlabAllocatorError::InvalidSize);
+        assert_eq!(alloc_err, SlabAllocatorError::NonDivisibleSize);
 
         // Using a size that is too small should cause an error
         let size = 1;
@@ -540,7 +532,7 @@ mod tests {
             SlabAllocator::new(&mut storage[..], LAYOUT)
                 .expect_err("Should have failed to create allocator")
         };
-        assert_eq!(alloc_err, SlabAllocatorError::InvalidSize);
+        assert_eq!(alloc_err, SlabAllocatorError::StorageTooSmall);
 
         // Using an invalid alignment should cause an error
         let size = NUM_SLABS * mem::size_of::<DataType>() + 1;
