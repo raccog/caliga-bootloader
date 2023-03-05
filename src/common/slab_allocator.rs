@@ -1,6 +1,11 @@
 //! Slab allocator implementation.
 
-use core::{alloc::{Allocator, AllocError, Layout}, cell::UnsafeCell, fmt::Debug, ptr::{NonNull, self}};
+use core::{
+    alloc::{AllocError, Allocator, Layout},
+    cell::UnsafeCell,
+    fmt::Debug,
+    ptr::{self, NonNull},
+};
 #[cfg(not(test))]
 use log::debug;
 #[cfg(test)]
@@ -60,7 +65,7 @@ impl SlabAllocator {
     /// Returns the mutable bitmap used for keeping track of free slabs.
     fn bitmap_mut(&self) -> &mut [u8] {
         unsafe { &mut self.storage_mut()[self.buffer_size()..] }
-     }
+    }
 
     /// Returns the number of usable bits in the bitmap.
     ///
@@ -162,7 +167,10 @@ impl SlabAllocator {
     ///         .expect("Failed to initialize slab allocator")
     /// };
     /// ```
-    pub unsafe fn new(storage: &mut [u8], slab_layout: Layout) -> Result<SlabAllocator, SlabAllocatorError> {
+    pub unsafe fn new(
+        storage: &mut [u8],
+        slab_layout: Layout,
+    ) -> Result<SlabAllocator, SlabAllocatorError> {
         let layout_size = slab_layout.size();
         let storage_size = storage.len();
         if storage_size < layout_size * 2 {
@@ -178,7 +186,8 @@ impl SlabAllocator {
         storage.fill(0);
 
         let slab_allocator = SlabAllocator {
-            allocated_storage: NonNull::new(storage as *mut [u8] as *mut UnsafeCell<[u8]>).unwrap(), slab_layout
+            allocated_storage: NonNull::new(storage as *mut [u8] as *mut UnsafeCell<[u8]>).unwrap(),
+            slab_layout,
         };
 
         const U8_MAX: u8 = u8::MAX;
@@ -201,7 +210,14 @@ impl SlabAllocator {
             }
         }
 
-        debug!("{:#?}, storage_size: {:?}, slab_count: {:#?}, buffer_size: {:#?}, bitmap_size: {:#?}", slab_allocator, slab_allocator.storage().len(), slab_allocator.bitmap_bits(), slab_allocator.buffer_size(), slab_allocator.bitmap_size());
+        debug!(
+            "{:#?}, storage_size: {:?}, slab_count: {:#?}, buffer_size: {:#?}, bitmap_size: {:#?}",
+            slab_allocator,
+            slab_allocator.storage().len(),
+            slab_allocator.bitmap_bits(),
+            slab_allocator.buffer_size(),
+            slab_allocator.bitmap_size()
+        );
 
         Ok(slab_allocator)
     }
@@ -222,14 +238,11 @@ unsafe impl Allocator for SlabAllocator {
     //
     // * `layout` does not match this slab allocator's slab layout; `(layout != self.slab_layout)`
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        // Return error if `layout` does not match `self.slab_layout`
         if self.slab_layout != layout {
             return Err(AllocError);
         }
 
         let bitmap = self.bitmap_mut();
-        // Search each byte of the bitmap to find a free slab
-        // NOTE: Free slabs are denoted by a `0` in the bitmap.
         for (i, bitmap_part) in bitmap.iter_mut().enumerate() {
             if *bitmap_part < u8::MAX {
                 let slab_bit = (*bitmap_part).trailing_ones() as usize;
@@ -310,14 +323,13 @@ mod tests {
         let mut storage: Vec<u8> = vec![0; size];
         let layout = Layout::new::<T>();
         let slab_allocator = unsafe {
-            SlabAllocator::new(&mut storage[..], layout)
-                .expect("Failed to create allocator")
+            SlabAllocator::new(&mut storage[..], layout).expect("Failed to create allocator")
         };
 
         VecSlabAlloc {
             slab_allocator,
             layout,
-            storage
+            storage,
         }
     }
 
@@ -331,12 +343,10 @@ mod tests {
     fn smallest_allocation() {
         type DataType = u8;
         fn smallest_allocation_assert(data: DataType, slab_allocator: &SlabAllocator) {
-            let allocated = Box::try_new_in(data, slab_allocator)
-                .expect("Failed to allocate");
+            let allocated = Box::try_new_in(data, slab_allocator).expect("Failed to allocate");
             assert_eq!(*allocated, data);
 
-            Box::try_new_in(!data, slab_allocator)
-                .expect_err("Should have failed to allocate");
+            Box::try_new_in(!data, slab_allocator).expect_err("Should have failed to allocate");
         }
 
         let alloc = init_slab_alloc::<DataType>(2 * mem::size_of::<DataType>());
@@ -368,8 +378,8 @@ mod tests {
 
             // Fill allocator
             for i in 0..capacity {
-                let alloc = Box::try_new_in(i as DataType, slab_allocator)
-                    .expect("Failed to allocate");
+                let alloc =
+                    Box::try_new_in(i as DataType, slab_allocator).expect("Failed to allocate");
                 saved_allocations.push(alloc);
             }
 
@@ -408,8 +418,8 @@ mod tests {
 
             // Make all allocations
             for i in 0..SLAB_COUNT {
-                let alloc = Box::try_new_in(i as DataType, slab_allocator)
-                    .expect("Failed to allocate");
+                let alloc =
+                    Box::try_new_in(i as DataType, slab_allocator).expect("Failed to allocate");
                 saved_allocations.push_back(alloc);
             }
 
@@ -425,14 +435,13 @@ mod tests {
 
             // Re-allocate
             for i in 0..SLAB_COUNT / 2 + 1 {
-                let alloc = Box::try_new_in(i as DataType, slab_allocator)
-                    .expect("Failed to allocate");
+                let alloc =
+                    Box::try_new_in(i as DataType, slab_allocator).expect("Failed to allocate");
                 saved_allocations.push_back(alloc);
             }
 
             // Allocator should be full
-            Box::try_new_in(0xff, slab_allocator)
-                .expect_err("Should have failed to allocate");
+            Box::try_new_in(0xff, slab_allocator).expect_err("Should have failed to allocate");
 
             // Free odd-indexed slabs
             for i in (1..SLAB_COUNT).step_by(2).rev() {
@@ -441,14 +450,13 @@ mod tests {
 
             // Re-allocate
             for i in 0..SLAB_COUNT / 2 {
-                let alloc = Box::try_new_in(i as DataType, slab_allocator)
-                    .expect("Failed to allocate");
+                let alloc =
+                    Box::try_new_in(i as DataType, slab_allocator).expect("Failed to allocate");
                 saved_allocations.push_back(alloc);
             }
 
             // Allocator should be full
-            Box::try_new_in(0xff, slab_allocator)
-                .expect_err("Should have failed to allocate");
+            Box::try_new_in(0xff, slab_allocator).expect_err("Should have failed to allocate");
 
             // Free first half
             for _ in 0..SLAB_COUNT / 2 {
@@ -481,14 +489,8 @@ mod tests {
         let layout = alloc.layout;
 
         // Manual allocation
-        let allocated = slab_allocator
-            .allocate(layout)
-            .expect("Failed to allocate");
-        let data = unsafe {
-            allocated
-                .cast::<DataType>()
-                .as_mut()
-        };
+        let allocated = slab_allocator.allocate(layout).expect("Failed to allocate");
+        let data = unsafe { allocated.cast::<DataType>().as_mut() };
 
         // Ensure it's initialized as 0
         const ZERO: DataType = 0;
@@ -557,7 +559,6 @@ mod tests {
 
         // Using a layout that doesn't match the slab allocator should cause an error,
         // such as allocating a float (align 4) with a u8 allocator (align 1)
-        Box::try_new_in(3.14159, slab_allocator)
-            .expect_err("Should have failed to allocate");
+        Box::try_new_in(3.14159, slab_allocator).expect_err("Should have failed to allocate");
     }
 }

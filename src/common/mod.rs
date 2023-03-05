@@ -1,2 +1,2 @@
-pub mod intrusive_list;
+pub mod physical_allocator;
 pub mod slab_allocator;
