@@ -1,3 +1,9 @@
+/// TODO:
+/// 
+/// * Create `PhysicalAllocator::new()`
+/// * Implement `allocate` and `free` for physical allocator
+///     * Implement block splitting and merging
+
 use core::{mem, ptr::NonNull, slice};
 
 #[cfg(not(test))]
@@ -169,9 +175,8 @@ impl MemoryRegion {
         let cell_count = unsafe {
             // Add 2 here for the merged region and block headers. Also add any new cells made from previously
             // unaligned bytes.
-            let new_cell_count = second.first_block().cell_count
-                + 2
-                + (unaligned_bytes / CELL_SIZE);
+            let new_cell_count =
+                second.first_block().cell_count + 2 + (unaligned_bytes / CELL_SIZE);
             let cell_count = first.first_block().cell_count + new_cell_count;
 
             let new_cells_start =
@@ -274,11 +279,11 @@ impl PartialOrd for MemoryRegion {
 
 impl PhysicalAllocator {
     /// Insert a new region into this allocator's linked list of regions.
-    /// 
+    ///
     /// Regions are inserted in order of address.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// * `new_region` overlaps with an existing region
     fn insert_region<'a>(&'a mut self, new_region: &'a mut MemoryRegion) -> Result<(), ()> {
         if self.regions.is_none() {
@@ -286,7 +291,7 @@ impl PhysicalAllocator {
             return Ok(());
         }
 
-        let mut first_region = unsafe { self.regions.unwrap().as_mut() };
+        let first_region = unsafe { self.regions.unwrap().as_mut() };
 
         if unsafe { first_region.is_overlapping(new_region) } {
             return Err(());
@@ -327,7 +332,7 @@ mod tests {
     use std::{mem, vec};
 
     #[test]
-    fn init_region() {
+    fn insert_region() {
         // A region should be the size of 4 pointers
         assert_eq!(REGION_HEADER_SIZE, mem::size_of::<usize>() * 4);
         // A cell/block header should be the size of 4 pointers
@@ -339,8 +344,8 @@ mod tests {
         let start = 4;
         let from_end = 5;
         let end = REGION_SIZE - from_end;
-        let start_ptr = (&backed_region[start] as *const u8);
-        let end_ptr = (&backed_region[end] as *const u8);
+        let start_ptr = &backed_region[start] as *const u8;
+        let end_ptr = &backed_region[end] as *const u8;
         let region = MemoryRegion::new(&mut backed_region[start..end])
             .expect("Failed to initialize memory region");
 
@@ -354,5 +359,16 @@ mod tests {
             region.post_size(),
             CELL_SIZE - end_ptr.align_offset(CELL_SIZE)
         );
+
+        let mut allocator = { PhysicalAllocator { regions: None } };
+        allocator
+            .insert_region(region)
+            .expect("Failed to insert new region");
+
+        allocator
+            .insert_region(region)
+            .expect_err("Should have failed to insert overlapping region");
+
+        debug!("{:?}", allocator);
     }
 }
