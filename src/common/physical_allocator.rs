@@ -1,4 +1,4 @@
-use core::{mem, slice, ptr::NonNull};
+use core::{mem, ptr::NonNull, slice};
 
 #[cfg(not(test))]
 use log::debug;
@@ -46,35 +46,34 @@ pub struct PhysicalAllocator {
 
 impl MemoryRegion {
     /// Returns the first block in this region.
-    /// 
-    /// # Constraints
-    /// 
-    /// * This region must contain a valid block directly after the region's header
     unsafe fn first_block(&mut self) -> &mut MemoryBlock {
         &mut *((self as *mut MemoryRegion).add(1) as *mut MemoryBlock)
     }
 
     /// Attempts to insert a `new_region` after this region. Returns true if successful.
-    /// 
+    ///
     /// # Constraints
-    /// 
+    ///
     /// * Must only be called in `PhysicalAllocator::insert_region`
-    /// * Must be no other existing mutable references to `new_region`
+    /// * Must be no other references to `new_region`
     unsafe fn insert_after(&mut self, new_region: *mut MemoryRegion) -> bool {
-        // Constraints allow this to be mutated
         let new_region = &mut *new_region;
 
-        // TODO: Assert that regions are not initialized
-        assert!((*new_region).next.is_none());
+        // TODO: Assert that regions are not initialized and not overlapping
+        assert!(new_region.next.is_none());
+        assert!(!self.is_overlapping(new_region));
 
         if new_region < self {
             return false;
         }
 
+        // At this point, `new_region` is known to be located after this region
         if let Some(mut next) = self.next {
+            // This is safe as there should be no other references to `next`
             let next = next.as_mut();
-            if &*new_region < next {
-                (*new_region).next = self.next.take();
+            if new_region < next {
+                // `new_region` can be inserted in between this region and `next`
+                new_region.next = self.next.take();
                 self.next = Some(NonNull::new_unchecked(new_region));
                 true
             } else {
@@ -86,82 +85,100 @@ impl MemoryRegion {
         }
     }
 
-    // TODO: Change reference of new_region and first_region to a pointer
+    /// Attempts to insert a `new_region` before `first_region`. Returns true if successful.
+    ///
+    /// If successful, the `first_region` pointer will be set the the newly inserted region.
     unsafe fn insert_before(
         first_region: *mut *mut MemoryRegion,
         new_region: *mut MemoryRegion,
     ) -> bool {
-        assert!((*new_region).next.is_none());
+        let new_region = &mut *new_region;
+        let first_region_ptr = first_region;
+        let first_region = &mut **first_region_ptr;
 
-        if new_region > *first_region {
+        assert!(new_region.next.is_none());
+        assert!(!first_region.is_overlapping(new_region));
+
+        if new_region > first_region {
             return false;
         }
 
-        (*new_region).next = Some(NonNull::new_unchecked(*first_region));
-        *first_region = new_region;
+        new_region.next = Some(NonNull::new_unchecked(first_region));
+        *first_region_ptr = new_region;
 
         true
     }
 
+    /// Returns true if `other` is contiguous with this region.
+    ///
+    /// This means `other` is directly after/before this region.
     unsafe fn is_contiguous(&self, other: &MemoryRegion) -> bool {
         self.is_directly_after(other) || other.is_directly_after(self)
     }
 
+    /// Returns true if `other` is directly after this region.
     unsafe fn is_directly_after(&self, other: &MemoryRegion) -> bool {
-        //assert!()
-
         let self_ptr = self as *const MemoryRegion as *const u8;
         let self_end = self_ptr.add(self.size + self.post_size());
+
         let other_ptr = other as *const MemoryRegion as *const u8;
         let other_start = other_ptr.sub(other.pre_size());
 
         self_end == other_start
     }
 
+    /// Returns true if `other` is overlapping with this region.
     unsafe fn is_overlapping(&self, other: &MemoryRegion) -> bool {
-        let overlapping_before = (other > self)
-            && ((self as *const MemoryRegion).add(self.size)
-                > (other as *const MemoryRegion));
+        let overlapping_before = (other >= self)
+            && ((self as *const MemoryRegion).add(self.size) > (other as *const MemoryRegion));
         let overlapping_after = (self > other)
-            && ((other as *const MemoryRegion).add(other.size)
-                > (self as *const MemoryRegion));
+            && ((other as *const MemoryRegion).add(other.size) > (self as *const MemoryRegion));
 
         overlapping_before || overlapping_after
     }
 
-    // TODO: Change reference of new_region to a pointer
+    /// Attempts to merge a `new_region` into this region. Returns true if successful.
     unsafe fn merge(&mut self, new_region: *mut MemoryRegion) -> bool {
-        // TODO: Assert regions are non-overlapping, and not initialized
-        assert!((*new_region).next.is_none());
+        let new_region = &mut *new_region;
 
-        if !self.is_contiguous(&*new_region) {
+        // TODO: Assert regions are non-overlapping, and not initialized
+        assert!(new_region.next.is_none());
+        assert!(!self.is_overlapping(new_region));
+
+        // Regions must be contiguous to be merged
+        if !self.is_contiguous(new_region) {
             return false;
         }
 
+        // This will be re-inserted later
         let next = self.next.take();
 
-        let (first, second) = match &*self < &*new_region {
-            true => (self, &mut *new_region),
-            false => (&mut *new_region, self),
+        let (first, second) = match self < new_region {
+            true => (self, new_region),
+            false => (new_region, self),
         };
 
-        assert!((first.post_size() + second.pre_size()) % CELL_SIZE == 0);
-        assert!(first.post_size() + second.pre_size() <= CELL_SIZE);
+        // Unaligned bytes in between both regions must add up to either 0 or `CELL_SIZE`
+        let unaligned_bytes = first.post_size() + second.pre_size();
+        assert!(unaligned_bytes == 0 || unaligned_bytes == CELL_SIZE);
 
-        let size = first.size + first.post_size() + second.pre_size() + second.size;
+        let size = first.size + unaligned_bytes + second.size;
         let pre_size = first.pre_size;
         let post_size = second.post_size;
 
         let cell_count = unsafe {
+            // Add 2 here for the merged region and block headers. Also add any new cells made from previously
+            // unaligned bytes.
             let new_cell_count = second.first_block().cell_count
                 + 2
-                + ((first.post_size() + second.pre_size()) / CELL_SIZE);
+                + (unaligned_bytes / CELL_SIZE);
             let cell_count = first.first_block().cell_count + new_cell_count;
 
             let new_cells_start =
                 (first as *mut MemoryRegion).add(first.size / CELL_SIZE) as *mut MemoryCell;
             let new_cells = slice::from_raw_parts_mut(new_cells_start, new_cell_count);
 
+            // Ensure second region gets zeroed out, as the headers are not needed
             new_cells.fill(MemoryCell([0; CELL_SIZE]));
 
             cell_count
@@ -182,7 +199,7 @@ impl MemoryRegion {
         // This method (and others) assume that a region header is the same size as a block header
         assert!(CELL_SIZE == REGION_HEADER_SIZE);
 
-        // Ensure there will be enough room for a region header, block header, and a single cell,
+        // There needs to be enough room for a region header, block header, and a single cell,
         // even if the region is unaligned
         if region.len() < MINIMUM_REGION_SIZE {
             return Err(());
@@ -194,7 +211,12 @@ impl MemoryRegion {
         assert!(pre_region.len() < CELL_SIZE);
         assert!(post_region.len() < CELL_SIZE);
         debug!("{:p} {:p}", pre_region, region);
-        debug!("Pre: {:?} Region: {:?} Post: {:?}", pre_region.len(), region.len() * CELL_SIZE, post_region.len());
+        debug!(
+            "Pre: {:?} Region: {:?} Post: {:?}",
+            pre_region.len(),
+            region.len() * CELL_SIZE,
+            post_region.len()
+        );
 
         // Split off region header from the rest of the cells
         let (region_header, cells) = region.split_at_mut(1);
@@ -214,14 +236,12 @@ impl MemoryRegion {
         cells.fill(MemoryCell([0; CELL_SIZE]));
         post_region.fill(0);
 
-        // Init first block
         block_header.next = None;
         block_header.cell_count = cells.len();
         block_header.status = BLOCK_STATUS_FREE;
         block_header._padding0 = 0;
         block_header._padding1 = 0;
 
-        // Init region
         region_header.next = None;
         // Add 2 here so that the region and block headers are counted in the region size
         region_header.size = (block_header.cell_count + 2) * CELL_SIZE;
@@ -234,10 +254,12 @@ impl MemoryRegion {
         Ok(region_header)
     }
 
+    /// Return the number of unaligned bytes after this region.
     fn post_size(&self) -> usize {
         self.post_size as usize
     }
 
+    /// Return the number of unaligned bytes before this region.
     fn pre_size(&self) -> usize {
         self.pre_size as usize
     }
@@ -251,6 +273,13 @@ impl PartialOrd for MemoryRegion {
 }
 
 impl PhysicalAllocator {
+    /// Insert a new region into this allocator's linked list of regions.
+    /// 
+    /// Regions are inserted in order of address.
+    /// 
+    /// # Errors
+    /// 
+    /// * `new_region` overlaps with an existing region
     fn insert_region<'a>(&'a mut self, new_region: &'a mut MemoryRegion) -> Result<(), ()> {
         if self.regions.is_none() {
             self.regions = unsafe { Some(NonNull::new_unchecked(new_region)) };
@@ -263,7 +292,9 @@ impl PhysicalAllocator {
             return Err(());
         }
 
-        if unsafe { MemoryRegion::insert_before(&mut (first_region as *mut MemoryRegion), new_region) } {
+        if unsafe {
+            MemoryRegion::insert_before(&mut (first_region as *mut MemoryRegion), new_region)
+        } {
             self.regions = unsafe { Some(NonNull::new_unchecked(first_region)) };
             return Ok(());
         }
@@ -286,7 +317,7 @@ impl PhysicalAllocator {
             current_region = region.next;
         }
 
-        Err(())
+        unimplemented!()
     }
 }
 
@@ -314,8 +345,14 @@ mod tests {
             .expect("Failed to initialize memory region");
 
         // Ensure the sizes match up correctly
-        assert_eq!(region.size, REGION_SIZE - start - from_end - region.pre_size() - region.post_size());
+        assert_eq!(
+            region.size,
+            REGION_SIZE - start - from_end - region.pre_size() - region.post_size()
+        );
         assert_eq!(region.pre_size(), start_ptr.align_offset(CELL_SIZE));
-        assert_eq!(region.post_size(), CELL_SIZE - end_ptr.align_offset(CELL_SIZE));
+        assert_eq!(
+            region.post_size(),
+            CELL_SIZE - end_ptr.align_offset(CELL_SIZE)
+        );
     }
 }
