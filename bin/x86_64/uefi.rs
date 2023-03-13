@@ -1,13 +1,16 @@
 #![no_std]
 #![no_main]
 #![feature(abi_efiapi)]
+#![feature(stdsimd)]
 
 extern crate alloc;
 
-use core::{ops::DerefMut, panic::PanicInfo};
+use core::{arch::x86_64::has_cpuid, ops::DerefMut, panic::PanicInfo};
 use log::{debug, error, info, warn};
 use uefi::{self, prelude::*, proto::loaded_image::LoadedImage};
 use uefi_services::println;
+
+use caliga_bootloader::developing_modules::x86_64::cpuid::{CpuidMaxValues, cpuid_max_values};
 
 #[panic_handler]
 fn handle_panic(info: &PanicInfo) -> ! {
@@ -59,6 +62,10 @@ fn boot_uefi_entry(image_handle: Handle, mut system_table: SystemTable<Boot>) ->
         uefi_revision.major(),
         uefi_revision.minor()
     );
+
+    info!("Has CPUID: {}", has_cpuid());
+    let CpuidMaxValues {basic, extended} = unsafe { cpuid_max_values() };
+    info!("CPUID Max Values {{ basic: {:#x}, extended: {:#x} }}", basic, extended);
 
     // Output program info
     {

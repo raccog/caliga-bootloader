@@ -1,8 +1,9 @@
 /// TODO:
-///
+/// 
 /// * Create `PhysicalAllocator::new()`
 /// * Implement `allocate` and `free` for physical allocator
 ///     * Implement block splitting and merging
+
 use core::{mem, ptr::NonNull, slice};
 
 #[cfg(not(test))]
