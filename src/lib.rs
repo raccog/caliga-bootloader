@@ -9,6 +9,4 @@
 extern crate alloc;
 extern crate lazy_static;
 
-pub mod io;
-
-pub mod common;
+pub mod developing_modules;

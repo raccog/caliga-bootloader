@@ -142,7 +142,7 @@ impl SlabAllocator {
     ///
     /// ```
     /// # use std::{alloc::Layout, slice, vec};
-    /// # use caliga_bootloader::common::slab_allocator::SlabAllocator;
+    /// # use caliga_bootloader::developing_modules::slab_allocator::SlabAllocator;
     /// const MEMORY_SIZE: usize = 0x1000;
     /// # let memory = vec![0; MEMORY_SIZE];
     /// // This raw pointer could come from anywhere
@@ -158,7 +158,7 @@ impl SlabAllocator {
     ///
     /// ```
     /// # use std::{alloc::Layout, vec, vec::Vec};
-    /// # use caliga_bootloader::common::slab_allocator::SlabAllocator;
+    /// # use caliga_bootloader::developing_modules::slab_allocator::SlabAllocator;
     /// const MEMORY_SIZE: usize = 0x1000;
     /// // This memory is allocated using another already-existing allocator
     /// let mut backed_memory: Vec<u8> = vec![0; MEMORY_SIZE];

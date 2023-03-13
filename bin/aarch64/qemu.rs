@@ -15,7 +15,7 @@ use core::{
 };
 use log::{self, debug, info, LevelFilter, Log, Metadata, Record};
 
-use caliga_bootloader::io::{io::Io, mmio::Mmio};
+use caliga_bootloader::developing_modules::{io::Io, mmio::Mmio};
 
 // The start procedure
 global_asm!(include_str!("start.S"));

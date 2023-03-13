@@ -6,7 +6,7 @@ use core::{
     ptr::{addr_of, addr_of_mut, read_volatile, write_volatile},
 };
 
-use crate::io::io::Io;
+use crate::developing_modules::io::Io;
 
 #[repr(packed)]
 pub struct Mmio<T> {
