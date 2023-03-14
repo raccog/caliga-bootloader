@@ -6,18 +6,12 @@ use log::debug;
 #[cfg(test)]
 use std::println as debug;
 
-#[derive(Debug)]
-pub struct CpuidMaxValues {
-    pub basic: u32,
-    pub extended: u32,
-}
-
-/// Returns the maximum values for CPUID basic and extended functions.
-pub unsafe fn cpuid_max_values() -> CpuidMaxValues {
+/// Returns the maximum values for CPUID basic and extended functions respectively.
+pub unsafe fn cpuid_max_values() -> (u32, u32) {
     let (basic, _) = __get_cpuid_max(0);
     let (extended, _) = __get_cpuid_max(0x8000_0000);
 
-    CpuidMaxValues { basic, extended }
+    (basic, extended)
 }
 
 #[cfg(test)]
@@ -34,7 +28,7 @@ mod tests {
     /// that are out of range.
     #[test]
     fn cpuid_max() {
-        let CpuidMaxValues { basic, extended } = unsafe { cpuid_max_values() };
+        let (basic, extended) = unsafe { cpuid_max_values() };
         debug!(
             "CPUID Max Values {{ basic: {:#x}, extended: {:#x} }}",
             basic, extended
