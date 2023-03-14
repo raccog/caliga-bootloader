@@ -10,7 +10,7 @@ use log::{debug, error, info, warn};
 use uefi::{self, prelude::*, proto::loaded_image::LoadedImage};
 use uefi_services::println;
 
-use caliga_bootloader::developing_modules::x86_64::cpuid::cpuid_max_values;
+use caliga_bootloader::developing_modules::x86_64::cpuid::{cpuid_address_width, cpuid_max_values};
 
 #[panic_handler]
 fn handle_panic(info: &PanicInfo) -> ! {
@@ -68,6 +68,11 @@ fn boot_uefi_entry(image_handle: Handle, mut system_table: SystemTable<Boot>) ->
     info!(
         "CPUID Max Values {{ basic: {:#x}, extended: {:#x} }}",
         basic, extended
+    );
+    let (physical, linear) = unsafe { cpuid_address_width() };
+    info!(
+        "Addressing Width {{ physical: {}, linear: {} }}",
+        physical, linear
     );
 
     // Output program info
