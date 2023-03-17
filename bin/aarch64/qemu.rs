@@ -15,7 +15,7 @@ use core::{
 };
 use log::{self, debug, info, LevelFilter, Log, Metadata, Record};
 
-use caliga_bootloader::developing_modules::{io::Io, mmio::Mmio};
+use caliga_bootloader::developing_modules::{aarch64::system_registers::{current_exception_level, physical_address_width}, io::Io, mmio::Mmio};
 
 // The start procedure
 global_asm!(include_str!("start.S"));
@@ -230,6 +230,9 @@ pub unsafe extern "C" fn qemu_entry() {
     for (i, n) in v2.iter().enumerate() {
         debug!("{} {}", i, n);
     }
+
+    info!("Current exception level: {:?}", unsafe { current_exception_level() });
+    info!("Physical address width: {}", unsafe { physical_address_width() });
 
     // TODO: Run kernel
     panic!("End of bootloader reached. Press 'CTRL+A' and then 'X' to exit.");
